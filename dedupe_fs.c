@@ -320,7 +320,7 @@ static int dedupe_fs_access(const char *path, int mask) {
 
   dedupe_fs_fullpath(ab_path, path);
 
-  res = access(path, mask);
+  res = access(ab_path, mask);
   if(FAILED == res)
     res = -errno;
 
