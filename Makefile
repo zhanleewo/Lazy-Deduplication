@@ -1,5 +1,5 @@
 CC=gcc
-SRC=dedupe_fs.c lazy_worker.c
+SRC=dedupe_fs.c lazy_worker.c debug_log.c
 CFLAGS=-g
 DEBUGFLAGS=-DDEBUG -DHAVE_CONFIG_H -D_FILE_OFFSET_BITS=64 -D_REENTRANT
 LINK_FLAGS=-lpthread
