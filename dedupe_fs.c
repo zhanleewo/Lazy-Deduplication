@@ -1,25 +1,26 @@
 //gcc -Wall `pkg-config fuse --cflags --libs` dedupe_fs.c -o dedupe_fs
 
+
 #define FUSE_USE_VERSION 26
 
-#define MAX_PATH_LEN 256
-#define BUF_LEN 1024
-
-#define SUCCESS 0
-#define FAILED -1
-
-#include <fuse.h>
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <dirent.h>
 #include <sys/time.h>
-#include <unistd.h>
+
+#include "dedupe_fs.h"
 
 char *dedupe_ini_file_store = "/tmp/dedupe_file_store";
 char *dedupe_metadata = "/tmp/dedupe_metadata";
 char *dedupe_hashes = "/tmp/dedupe_hashes";
+
+extern void *lazy_worker_thread(void *);
+
+static void usage() {
+  char out_buf[BUF_LEN];
+
+  sprintf(out_buf, "dedupe_fs [MOUNT_POINT]\n");
+  write(1, out_buf, strlen(out_buf));
+
+  exit(1);
+}
 
 #if 0
 static void print_fuse_file_info(struct fuse_file_info *fi) {
@@ -33,13 +34,16 @@ static void print_fuse_file_info(struct fuse_file_info *fi) {
 }
 #endif
 
-static void dedupe_fs_fullpath(char ab_path[MAX_PATH_LEN], const char *path) {
+void dedupe_fs_fullpath(char ab_path[MAX_PATH_LEN], const char *path) {
+
   memset(ab_path, 0, MAX_PATH_LEN);
   strcpy(ab_path, dedupe_ini_file_store);
   strcat(ab_path, path);
+
+  return;
 }
 
-static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
+int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
   int res = 0;
   char out_buf[BUF_LEN];
@@ -56,7 +60,7 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
   res = lstat(ab_path, stbuf);
   if(FAILED == res)
-    return -errno;
+    res = -errno;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -66,7 +70,9 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
   return res;
 }
 
-static int dedupe_fs_opendir(const char *path, struct fuse_file_info *fi) {
+static int dedupe_fs_opendir(
+    const char *path, 
+    struct fuse_file_info *fi) {
   int res = 0;
   char out_buf[BUF_LEN];
   char ab_path[MAX_PATH_LEN];
@@ -94,7 +100,11 @@ static int dedupe_fs_opendir(const char *path, struct fuse_file_info *fi) {
   return res;
 }
 
-static int dedupe_fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+static int dedupe_fs_readdir(
+    const char *path,
+    void *buf, fuse_fill_dir_t filler, 
+    off_t offset, 
+    struct fuse_file_info *fi) {
 
   int res = 0;
   DIR *dp;
@@ -603,5 +613,33 @@ static struct fuse_operations dedupe_fs_oper = {
 };
 
 int main(int argc, char **argv) {
+
+  int res = 0;
+  char out_buf[MAX_PATH_LEN];
+
+  pthread_t thr;
+  pthread_attr_t thr_attr;
+  thread_arg_t thr_arg;
+
+  if(argc < 2 || argc > 3) {
+    usage();
+  }
+
+  pthread_attr_init(&thr_attr);
+
+  res = pthread_attr_setdetachstate(&thr_attr, PTHREAD_CREATE_DETACHED);
+  if(res < SUCCESS) {
+    sprintf(out_buf, "[%s] unable to set attr to PTHREAD_CREATE_DETACHED\n", __FUNCTION__);
+    write(1, out_buf, strlen(out_buf));
+  }
+
+  if(FAILED == pthread_create(&thr, &thr_attr, lazy_worker_thread, &thr_arg)) {
+    sprintf(out_buf, "[%s] lazy worker creation failed\n", __FUNCTION__);
+    write(1, out_buf, strlen(out_buf));
+    perror("");
+  }
+
+  pthread_attr_destroy(&thr_attr);
+
   return fuse_main(argc, argv, &dedupe_fs_oper, NULL);
 }
