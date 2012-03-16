@@ -13,8 +13,9 @@
 #include <pthread.h>
 #include <fuse.h>
 
-#define MAX_PATH_LEN 256
-#define BUF_LEN 1024
+#define MAX_PATH_LEN 1024
+#define BUF_LEN 512 
+#define STAT_LEN 256
 
 #define SUCCESS 0
 #define FAILED -1

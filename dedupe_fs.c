@@ -36,9 +36,16 @@ static void print_fuse_file_info(struct fuse_file_info *fi) {
 
 void dedupe_fs_fullpath(char ab_path[MAX_PATH_LEN], const char *path) {
 
+  //char out_buf[BUF_LEN];
+
   memset(ab_path, 0, MAX_PATH_LEN);
   strcpy(ab_path, dedupe_ini_file_store);
   strcat(ab_path, path);
+
+#ifdef DEBUG
+  //sprintf(out_buf, "[%s] absolute path [%s]\n", __FUNCTION__, ab_path);
+  //write(1, out_buf, strlen(out_buf));
+#endif
 
   return;
 }
@@ -268,7 +275,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
   return res;
 }
 
-static int dedupe_fs_unlink(const char *path)
+int dedupe_fs_unlink(const char *path)
 {
   int res = 0;
   char out_buf[BUF_LEN];
@@ -293,7 +300,7 @@ static int dedupe_fs_unlink(const char *path)
   return res;
 }
 
-static int dedupe_fs_rmdir(const char *path) {
+int dedupe_fs_rmdir(const char *path) {
   int res = 0;
   char out_buf[BUF_LEN];
   char ab_path[MAX_PATH_LEN];
@@ -342,7 +349,7 @@ static int dedupe_fs_access(const char *path, int mask) {
   return res;
 }
 
-static int dedupe_fs_mkdir(const char *path, mode_t mode) {
+int dedupe_fs_mkdir(const char *path, mode_t mode) {
 
   int res = 0;
   char out_buf[BUF_LEN];
@@ -357,7 +364,7 @@ static int dedupe_fs_mkdir(const char *path, mode_t mode) {
 
   res = mkdir(ab_path, mode);
   if(FAILED == res)
-    return -errno;
+    res = -errno;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -367,7 +374,7 @@ static int dedupe_fs_mkdir(const char *path, mode_t mode) {
   return res;
 }
 
-static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
+int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   int fd;
   char out_buf[BUF_LEN];
   char ab_path[MAX_PATH_LEN];
@@ -394,7 +401,7 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   return SUCCESS;
 }
 
-static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
   int res = 0;
   char out_buf[BUF_LEN];
@@ -416,7 +423,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   return res;
 }
 
-static int dedupe_fs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+int dedupe_fs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
   int res;
   char out_buf[BUF_LEN];
@@ -438,7 +445,7 @@ static int dedupe_fs_write(const char *path, const char *buf, size_t size, off_t
   return res;
 }
 
-static int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
+int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
 
   int res = 0;
   char out_buf[BUF_LEN];
@@ -524,6 +531,7 @@ static int dedupe_fs_utime(const char *path, struct utimbuf *ubuf) {
 
   return res;
 }
+
 static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
   int fd = 0;
@@ -554,7 +562,7 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
   return SUCCESS;
 }
 
-static int dedupe_fs_mknod(const char *path, mode_t mode, dev_t rdev) {
+int dedupe_fs_mknod(const char *path, mode_t mode, dev_t rdev) {
   int res = 0;
   char out_buf[BUF_LEN];
   char ab_path[MAX_PATH_LEN];
