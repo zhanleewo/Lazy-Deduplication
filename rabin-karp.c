@@ -152,6 +152,7 @@ int main(int argc, char *argv[])
                         //printf("%s -  %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
 			fprintf(metafp,sha1(shastring));
+			fprintf(metafp,"\n");
 			//printf("End of file\n");
 			free(shastring);
 			break;
@@ -166,6 +167,7 @@ int main(int argc, char *argv[])
                         //printf("%s - %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
 			fprintf(metafp,sha1(shastring));
+			fprintf(metafp,"\n");
 			flag=0;
 			free(shastring);		
 		}
@@ -177,6 +179,7 @@ int main(int argc, char *argv[])
                         //printf("%s - %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
 			fprintf(metafp,sha1(shastring));
+			fprintf(metafp,"\n");
 			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
 			free(shastring);
