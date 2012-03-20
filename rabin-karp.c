@@ -4,16 +4,6 @@
 #include "rabin-karp.h"
 #include "sha1.h"
 
-#define SUBSTRING_LEN 5
-#define BASE 5
-#define MODULO_PRIME 7
-#define PATTERN_HASH 4
-#define MINCHUNK 8
-#define MAXCHUNK 10
-#define TRUE 1
-#define FALSE 0
-#define BITMASK 15
-
 long long int hash_prev=0;
 long long int hash_current=0;
 
@@ -31,7 +21,7 @@ int pattern_match(long long int rkhash)
 	}	
 }
 
-long int Rabin_Karp_Hash(char substring[],long int start_index,long int end_index)
+long int Rabin_Karp_Hash(char substring[],long long int start_index,long long int end_index) 
 {
 	int i,power;
 	if(start_index==0)
@@ -48,28 +38,24 @@ long int Rabin_Karp_Hash(char substring[],long int start_index,long int end_inde
 
 	}
 	hash_prev = hash_current;	
-	printf("The Rabin hash string is %s",substring);
+	//printf("The Rabin hash string is %s\n",substring);
 	return hash_current;
 }
 
 char * copy_substring(char *str, int start,int end)
 {
-	printf("The string is %s\n", str);
 	char *s = (char *)malloc(end-start+2);
-	//printf("The string is %s\n", str);
-	//char s[MAXCHUNK+1];
 	int i=0;
 	while(start+i<=end)
 	{
-		//*s++ = *(str+start+i);
 		s[i] = str[start+i];
 		//printf("%c,%c",s[i],str[start+i]);
 		//start++;
 		i++;
 	}
 	s[i]='\0';
-	printf("%s\n",s);
-	printf("The file stream after copysubstring loop is %s and size is %d",str,strlen(str));
+	printf("The substring is %s\n",s);
+	//printf("The file stream after copysubstring loop is %s and size is %d",str,strlen(str));
 	return s;
 
 	/*char *to;
@@ -85,7 +71,6 @@ char * copy_substring(char *str, int start,int end)
 int main(int argc, char *argv[])
 {
 	FILE *fp;
-	//char readfilestring[100000];
 	char * readfilestring;
 	long long int file_size,file_read,len;
 	long long int rkhash;
@@ -120,15 +105,13 @@ int main(int argc, char *argv[])
 		printf("File not read into the buffer completely");
 		return 1;
 	}
-	
 
 	printf("%s\n",readfilestring);
-	printf("%d",strlen(readfilestring));
+	printf("%d\n",strlen(readfilestring));
 	len = strlen(readfilestring)-1;
 	
 	while(endblock <= len) 
 	{
-		printf("Loop string is %s\n",readfilestring);
 		if(flag==0)
 		{
 			startblock = endblock;
@@ -138,13 +121,13 @@ int main(int argc, char *argv[])
 		}
 		if(endblock >= len)
 		{
-			printf("Block size is %d to %d\n",startblock,len);
+			//printf("Block size is %d to %d\n",startblock,len);
 			//shastring = copy_substring(readfilestring,startblock,endblock);
 			//printf("%s -  %s\n",shastring,sha1(shastring));
 			shastring = copy_substring(readfilestring,startblock,len);
                         printf("%s -  %s\n",shastring,sha1(shastring));
 			//printf("End of file\n");
-			//free(shastring);
+			free(shastring);
 			break;
 		} 
 		rkhash = Rabin_Karp_Hash(readfilestring,i,endblock);
@@ -152,23 +135,23 @@ int main(int argc, char *argv[])
 		//printf("The string range is %d - %d\n",i,SUBSTRING_LEN-1+i);
 		if(pattern_match(rkhash))
 		{
-			printf("\nInside if\n");
-			printf("Block size is %d to %d\n",startblock,endblock);
+			//printf("\nInside if\n");
+			//printf("Block size is %d to %d\n",startblock,endblock);
 			shastring = copy_substring(readfilestring,startblock,endblock);
                         printf("%s - %s\n",shastring,sha1(shastring));
-			printf("The readstring is %s\n",readfilestring);
+			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
-			//free(shastring);		
+			free(shastring);		
 		}
 		else if((endblock-startblock+1)==MAXCHUNK)
 		{
-			printf("inside Max chunk block");
-			printf("Block size is %d to %d\n",startblock, endblock);
+			//printf("inside Max chunk block");
+			//printf("Block size is %d to %d\n",startblock, endblock);
 			shastring = copy_substring(readfilestring,startblock,endblock);
                         printf("%s - %s\n",shastring,sha1(shastring));
-			printf("The readstring is %s\n",readfilestring);
+			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
-			//free(shastring);
+			free(shastring);
 		}
 		else
 		{ 
@@ -177,14 +160,9 @@ int main(int argc, char *argv[])
 		//printf("The i value inside loop%d\n",i);
 		i++;
 		endblock++;
-		//free(shastring);
-		//free(shastring);
 		//printf("The value of %d - %d - %d",i,endblock,len); 
 	}
-	//printf("The value of i is %d",i);
 	printf("End of while loop");
-
-	
 
 	fclose(fp);
 	free(readfilestring);   // Some memory corruption error when this is uncommented 
