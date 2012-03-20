@@ -1,1 +1,10 @@
 De-duplication using lazy approach with variable size blocks
+
+Makefile      – Creates /tmp/dedupe_file_store, /tmp/dedupe_metadata, /tmp/dedupe_hashes and /tmp/dedupe_fs. 
+                /tmp/dedupe_fs is the FUSE mount point exposed to the user as the dedupe-capable file system. 
+
+dedupe_fs.c   – Main part of the program containing the simple FUSE based file system. 
+                It also creates a new thread responsible for lazily working on the files stored in the initial file store. 
+lazy_worker.c – Contains the lazy worker thread whose functionality has already been explained above.
+rabin-karp.c  – Contains the implementation specific to rabin-karp fingerprinting algorithm.
+Sha1.c        – Contains the SHA1 implementation.
