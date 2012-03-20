@@ -1,8 +1,10 @@
 CC=gcc
 SRC=dedupe_fs.c lazy_worker.c debug_log.c
-CFLAGS=-g
+RABSHA_SRC = rabin-karp.c sha1.c
+CFLAGS=-g -w
 DEBUGFLAGS=-DDEBUG -DHAVE_CONFIG_H -D_FILE_OFFSET_BITS=64 -D_REENTRANT
-LINK_FLAGS=-lpthread
+LINK_FLAGS=-lpthread -lm
+SECURITY_FLAGS = -lgcrypt -lgpg-error
 
 dedupe:
 	rm -fr /tmp/dedupe_*
@@ -12,5 +14,8 @@ dedupe:
 	mkdir /tmp/dedupe_fs
 	${CC} -Wall `pkg-config fuse --cflags --libs` ${DEBUGFLAGS} ${CFLAGS} ${SRC} -o dedupe_fs ${LINK_FLAGS}
 
+rabinsha1 :
+	${CC} ${CFLAGS} ${RABSHA_SRC} -o rabinsha1 ${SECURITY_FLAGS} ${LINK_FLAGS}
+
 clean:
-	rm -f dedupe_fs
+	rm -f dedupe_fs rabinsha1
