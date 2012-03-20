@@ -1,3 +1,5 @@
+//Courtesy - SHA1 lib modified from http://ubuntuforums.org/archive/index.php/t-337664.html
+
 #include <gcrypt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,10 +37,3 @@ char* sha1(char string[])
 	return out;
 
 }
-
-
-/*int main()
-{
-	printf("%s",sha1("Raghavan"));
-	return 0;
-} */
