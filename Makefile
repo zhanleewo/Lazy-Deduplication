@@ -14,7 +14,7 @@ dedupe:
 	mkdir /tmp/dedupe_fs
 	${CC} -Wall `pkg-config fuse --cflags --libs` ${DEBUGFLAGS} ${CFLAGS} ${SRC} -o dedupe_fs ${LINK_FLAGS}
 
-rabinsha1 :
+rabinsha1:
 	${CC} ${CFLAGS} ${RABSHA_SRC} -o rabinsha1 ${SECURITY_FLAGS} ${LINK_FLAGS}
 
 clean:
