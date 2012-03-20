@@ -17,4 +17,6 @@ long int Rabin_Karp_Hash(char substring[],long long int start_index,long long in
 
 char * copy_substring(char *str, int start,int end);
 
+void create_chunkfile(char str[],char shastr[]);
+
 #endif

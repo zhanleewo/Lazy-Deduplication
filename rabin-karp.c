@@ -67,6 +67,27 @@ char * copy_substring(char *str, int start,int end)
 	*/
 }
 
+void create_chunkfile(char str[],char shastr[])
+{
+	FILE *filech;
+	char *filename = (char *)malloc(strlen(shastr)+4);
+	strcpy(filename,shastr);
+	strcat(filename,".txt");
+	printf("File name - %s\n",filename);
+	filech = fopen(filename,"wb");
+	if(filech == NULL)
+	{
+		printf("File chunk not created or returned");
+	}
+	else
+	{
+		printf("File created");
+		fprintf(filech,str);
+	}
+	free(filename);
+	fclose(filech);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -126,6 +147,7 @@ int main(int argc, char *argv[])
 			//printf("%s -  %s\n",shastring,sha1(shastring));
 			shastring = copy_substring(readfilestring,startblock,len);
                         printf("%s -  %s\n",shastring,sha1(shastring));
+			create_chunkfile(shastring,sha1(shastring));
 			//printf("End of file\n");
 			free(shastring);
 			break;
@@ -139,6 +161,7 @@ int main(int argc, char *argv[])
 			//printf("Block size is %d to %d\n",startblock,endblock);
 			shastring = copy_substring(readfilestring,startblock,endblock);
                         printf("%s - %s\n",shastring,sha1(shastring));
+			create_chunkfile(shastring,sha1(shastring));
 			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
 			free(shastring);		
@@ -149,6 +172,7 @@ int main(int argc, char *argv[])
 			//printf("Block size is %d to %d\n",startblock, endblock);
 			shastring = copy_substring(readfilestring,startblock,endblock);
                         printf("%s - %s\n",shastring,sha1(shastring));
+			create_chunkfile(shastring,sha1(shastring));
 			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
 			free(shastring);
