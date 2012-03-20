@@ -91,11 +91,11 @@ void create_chunkfile(char str[],char shastr[])
 
 int main(int argc, char *argv[])
 {
-	FILE *fp;
-	char * readfilestring;
+	FILE *fp,*metafp;
+	char * readfilestring,*metafile;
 	long long int file_size,file_read,len;
 	long long int rkhash;
-	long int startblock=0,endblock=0;
+	long long int startblock=0,endblock=0;
 	int i=0,j=0,flag=0;
 	char *shastring;
 	
@@ -127,6 +127,14 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	// Creating the meta file
+
+	metafile = (char *)malloc(strlen(argv[1]+5));
+	strcpy(metafile,argv[1]);
+	strcat(metafile,".meta");
+	metafp = fopen(metafile,"wb");
+	//printf("META DATE is %sXXXXXXXXXXXXXXXXX\n",metafile);
+
 	printf("%s\n",readfilestring);
 	printf("%d\n",strlen(readfilestring));
 	len = strlen(readfilestring)-1;
@@ -148,6 +156,7 @@ int main(int argc, char *argv[])
 			shastring = copy_substring(readfilestring,startblock,len);
                         printf("%s -  %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
+			fprintf(metafp,sha1(shastring));
 			//printf("End of file\n");
 			free(shastring);
 			break;
@@ -162,6 +171,7 @@ int main(int argc, char *argv[])
 			shastring = copy_substring(readfilestring,startblock,endblock);
                         printf("%s - %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
+			fprintf(metafp,sha1(shastring));
 			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
 			free(shastring);		
@@ -173,6 +183,7 @@ int main(int argc, char *argv[])
 			shastring = copy_substring(readfilestring,startblock,endblock);
                         printf("%s - %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
+			fprintf(metafp,sha1(shastring));
 			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
 			free(shastring);
@@ -189,6 +200,7 @@ int main(int argc, char *argv[])
 	printf("End of while loop");
 
 	fclose(fp);
+	fclose(metafp);
 	free(readfilestring);   // Some memory corruption error when this is uncommented 
 	return 0;
 }
