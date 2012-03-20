@@ -49,13 +49,10 @@ char * copy_substring(char *str, int start,int end)
 	while(start+i<=end)
 	{
 		s[i] = str[start+i];
-		//printf("%c,%c",s[i],str[start+i]);
-		//start++;
 		i++;
 	}
 	s[i]='\0';
-	printf("The substring is %s\n",s);
-	//printf("The file stream after copysubstring loop is %s and size is %d",str,strlen(str));
+	//printf("The substring is %s\n",s);
 	return s;
 
 	/*char *to;
@@ -73,7 +70,7 @@ void create_chunkfile(char str[],char shastr[])
 	char *filename = (char *)malloc(strlen(shastr)+4);
 	strcpy(filename,shastr);
 	strcat(filename,".txt");
-	printf("File name - %s\n",filename);
+	printf("Chunk File name - %s\n",filename);
 	filech = fopen(filename,"wb");
 	if(filech == NULL)
 	{
@@ -81,7 +78,7 @@ void create_chunkfile(char str[],char shastr[])
 	}
 	else
 	{
-		printf("File created");
+		//printf("Chunk File created");
 		fprintf(filech,str);
 	}
 	free(filename);
@@ -133,10 +130,10 @@ int main(int argc, char *argv[])
 	strcpy(metafile,argv[1]);
 	strcat(metafile,".meta");
 	metafp = fopen(metafile,"wb");
-	//printf("META DATE is %sXXXXXXXXXXXXXXXXX\n",metafile);
 
-	printf("%s\n",readfilestring);
-	printf("%d\n",strlen(readfilestring));
+	printf("The Meta data file - %s\n",metafile);
+	//printf("%s\n",readfilestring);
+	//printf("%d\n",strlen(readfilestring));
 	len = strlen(readfilestring)-1;
 	
 	while(endblock <= len) 
@@ -151,10 +148,8 @@ int main(int argc, char *argv[])
 		if(endblock >= len)
 		{
 			//printf("Block size is %d to %d\n",startblock,len);
-			//shastring = copy_substring(readfilestring,startblock,endblock);
-			//printf("%s -  %s\n",shastring,sha1(shastring));
 			shastring = copy_substring(readfilestring,startblock,len);
-                        printf("%s -  %s\n",shastring,sha1(shastring));
+                        //printf("%s -  %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
 			fprintf(metafp,sha1(shastring));
 			//printf("End of file\n");
@@ -163,16 +158,14 @@ int main(int argc, char *argv[])
 		} 
 		rkhash = Rabin_Karp_Hash(readfilestring,i,endblock);
 		//printf("%ld\n",rkhash);
-		//printf("The string range is %d - %d\n",i,SUBSTRING_LEN-1+i);
 		if(pattern_match(rkhash))
 		{
 			//printf("\nInside if\n");
 			//printf("Block size is %d to %d\n",startblock,endblock);
 			shastring = copy_substring(readfilestring,startblock,endblock);
-                        printf("%s - %s\n",shastring,sha1(shastring));
+                        //printf("%s - %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
 			fprintf(metafp,sha1(shastring));
-			//printf("The readstring is %s\n",readfilestring);
 			flag=0;
 			free(shastring);		
 		}
@@ -181,7 +174,7 @@ int main(int argc, char *argv[])
 			//printf("inside Max chunk block");
 			//printf("Block size is %d to %d\n",startblock, endblock);
 			shastring = copy_substring(readfilestring,startblock,endblock);
-                        printf("%s - %s\n",shastring,sha1(shastring));
+                        //printf("%s - %s\n",shastring,sha1(shastring));
 			create_chunkfile(shastring,sha1(shastring));
 			fprintf(metafp,sha1(shastring));
 			//printf("The readstring is %s\n",readfilestring);
@@ -197,7 +190,7 @@ int main(int argc, char *argv[])
 		endblock++;
 		//printf("The value of %d - %d - %d",i,endblock,len); 
 	}
-	printf("End of while loop");
+	//printf("End of while loop");
 
 	fclose(fp);
 	fclose(metafp);
