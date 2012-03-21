@@ -1,0 +1,6 @@
+References
+----------
+
+[1] http://community.topcoder.com/tc?module=Static&d1=tutorials&d2=stringSearching - Top coder tutorials for Rabin-Karp rolling hash
+[2] http://pdos.csail.mit.edu/papers/lbfs:sosp01/lbfs.pdf - Low Bandwidth File System
+[3] http://ubuntuforums.org/archive/index.php/t-337664.html - SHA1 implementation reference
