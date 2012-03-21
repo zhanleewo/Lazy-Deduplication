@@ -1,10 +1,38 @@
 De-duplication using lazy approach with variable size blocks
 
+Required packages
+-----------------
+The following two packages has to be installed for the working for SHA1
+	- libgcrypt11-dev 
+	- libgpg-error
+For a Ubuntu 64bit the following comands will install these packages
+$ sudo apt-get install libgcrypt11-dev
+$ sudo apt-get install libgpg-error-1.10
+
+Project compilation
+-------------------
+
+A Makefile is provided and just running that file will compile the entire project
+
+$ make clean
+$ make
+
+Project execution
+-----------------
+
+
+Project contents in the zip file
+--------------------------------
+
 Makefile      – Creates /tmp/dedupe_file_store, /tmp/dedupe_metadata, /tmp/dedupe_hashes and /tmp/dedupe_fs. 
                 /tmp/dedupe_fs is the FUSE mount point exposed to the user as the dedupe-capable file system. 
 
 dedupe_fs.c   – Main part of the program containing the simple FUSE based file system. 
                 It also creates a new thread responsible for lazily working on the files stored in the initial file store. 
 lazy_worker.c – Contains the lazy worker thread whose functionality has already been explained above.
-rabin-karp.c  – Contains the implementation specific to rabin-karp fingerprinting algorithm.
-Sha1.c        – Contains the SHA1 implementation.
+rabin-karp.c  – Contains the implementation specific to Rabin-Karp fingerprinting algorithm.
+sha1.c        – Contains the SHA1 implementation.
+rabin-karp.h  - Header file which contains the function definitions required for Rabin-Karp fingerprinting algorithm
+sha1.h        - Header file which contains the function defintions required for sha1 implementation
+dedupe_fs.h   - Header file which contains the function definitions required for simple FUSE based file system
+README        - Contains details about file contents, instructions about compliation and execution.
