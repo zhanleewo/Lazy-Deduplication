@@ -22,6 +22,7 @@ Project execution
 -----------------
 $ ./dedupe_fs /tmp/dedupe_fs
 $ ./rabinsha1 <fiename.txt>
+
 Project contents in the zip file
 --------------------------------
 
