@@ -20,7 +20,7 @@ $ make
 
 Project execution
 -----------------
-$ ./dedupe_fs <MOUNT_POINT>
+$ ./dedupe_fs /tmp/dedupe_fs
 $ ./rabinsha1 <fiename.txt>
 Project contents in the zip file
 --------------------------------
@@ -37,4 +37,3 @@ sha1.c        – Contains the SHA1 implementation.
 rabin-karp.h  - Header file which contains the function definitions required for Rabin-Karp fingerprinting algorithm
 sha1.h        - Header file which contains the function defintions required for sha1 implementation
 dedupe_fs.h   - Header file which contains the function definitions required for simple FUSE based file system
-README        - Contains details about file contents, instructions about compliation and execution.
