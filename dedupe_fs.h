@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <sys/file.h>
 
 #include <errno.h>
 #include <pthread.h>

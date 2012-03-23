@@ -399,9 +399,21 @@ int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset, struc
   write(1, out_buf, strlen(out_buf));
 #endif
 
+  if(FAILED == flock(fi->fh, LOCK_EX)) {
+    sprintf(out_buf, "[%s] flock LOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
+    write(1, out_buf, strlen(out_buf));
+    return -errno;
+  }
+
   res = pread(fi->fh, buf, size, offset);
   if(FAILED == res)
     res = -errno;
+
+  if(FAILED == flock(fi->fh, LOCK_UN)) {
+    sprintf(out_buf, "[%s] flock UNLOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
+    write(1, out_buf, strlen(out_buf));
+    return -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -421,9 +433,21 @@ int dedupe_fs_write(const char *path, const char *buf, size_t size, off_t offset
   write(1, out_buf, strlen(out_buf));
 #endif
 
+  if(FAILED == flock(fi->fh, LOCK_EX)) {
+    sprintf(out_buf, "[%s] flock LOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
+    write(1, out_buf, strlen(out_buf));
+    return -errno;
+  }
+
   res = pwrite(fi->fh, buf, size, offset);
   if(FAILED == res)
     res = -errno;
+
+  if(FAILED == flock(fi->fh, LOCK_UN)) {
+    sprintf(out_buf, "[%s] flock UNLOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
+    write(1, out_buf, strlen(out_buf));
+    return -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -620,7 +644,7 @@ int main(int argc, char **argv) {
   if(argc < 2 || argc > 3) {
     usage();
   }
-
+#if 0
   pthread_attr_init(&thr_attr);
 
   res = pthread_attr_setdetachstate(&thr_attr, PTHREAD_CREATE_DETACHED);
@@ -636,6 +660,6 @@ int main(int argc, char **argv) {
   }
 
   pthread_attr_destroy(&thr_attr);
-
+#endif
   return fuse_main(argc, argv, &dedupe_fs_oper, NULL);
 }
