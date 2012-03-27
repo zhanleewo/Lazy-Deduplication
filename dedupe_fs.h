@@ -33,4 +33,11 @@ typedef struct thread_arg {
   int thr_num;
 } thread_arg_t;
 
+typedef struct dedupe_fs_globals {
+  pthread_t         thr_handle;
+  pthread_attr_t    thr_attr;
+  thread_arg_t      thr_arg;
+  pthread_mutex_t   lk;
+} dedupe_globals;
+
 #endif /* DEDUPE_FS_H */

@@ -10,6 +10,7 @@
 char *dedupe_ini_file_store = "/tmp/dedupe_file_store";
 char *dedupe_metadata = "/tmp/dedupe_metadata";
 char *dedupe_hashes = "/tmp/dedupe_hashes";
+dedupe_globals globals;
 
 extern void *lazy_worker_thread(void *);
 
@@ -363,9 +364,13 @@ int dedupe_fs_mkdir(const char *path, mode_t mode) {
 }
 
 int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
-  int fd;
+
+  int fd, ret = 0;
   char out_buf[BUF_LEN];
   char ab_path[MAX_PATH_LEN];
+  struct fuse_context *mycontext = fuse_get_context();
+
+  dedupe_globals *glob = (dedupe_globals *)mycontext->private_data;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -375,11 +380,24 @@ int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   //print_fuse_file_info(fi);
   dedupe_fs_fullpath(ab_path, path);
 
+  // TODO - redesign lock mechanism
+  pthread_mutex_lock(&globals.lk);
+
   fd = open(ab_path, fi->flags);
-  if(FAILED == fd)
+  if(FAILED == fd) {
+    pthread_mutex_unlock(&globals.lk);
     return -errno;
+  }
 
   fi->fh = fd;
+
+  if(FAILED == flock(fi->fh, LOCK_EX|LOCK_NB)) {
+    sprintf(out_buf, "[%s] LOCK on [%s] failed error [%d]\n",
+        __FUNCTION__, path, errno);
+    write(1, out_buf, strlen(out_buf));
+  }
+
+  pthread_mutex_unlock(&globals.lk);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -608,7 +626,66 @@ int dedupe_fs_mknod(const char *path, mode_t mode, dev_t rdev) {
   return res;
 }
 
+void * dedupe_fs_init(struct fuse_conn_info *conn) {
+  int res = 0;
+  char out_buf[BUF_LEN];
+
+  struct fuse_context *mycontext = fuse_get_context();
+  
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  write(1, out_buf, strlen(out_buf));
+#endif
+
+  pthread_mutex_init(&globals.lk, NULL);
+  pthread_attr_init(&globals.thr_attr);
+
+  res = pthread_attr_setdetachstate(&globals.thr_attr, PTHREAD_CREATE_DETACHED);
+  if(res < SUCCESS) {
+    sprintf(out_buf, "[%s] unable to set attr to PTHREAD_CREATE_DETACHED\n", __FUNCTION__);
+    write(1, out_buf, strlen(out_buf));
+  }
+
+  if(FAILED == pthread_create(&globals.thr_handle, &globals.thr_attr, lazy_worker_thread, &globals.thr_arg)) {
+    sprintf(out_buf, "[%s] lazy worker creation failed\n", __FUNCTION__);
+    write(1, out_buf, strlen(out_buf));
+    perror("");
+  }
+
+  pthread_attr_destroy(&globals.thr_attr);
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  write(1, out_buf, strlen(out_buf));
+#endif
+
+  return (mycontext->private_data);
+
+}
+
+void dedupe_fs_destroy(void *private_data) {
+  char out_buf[BUF_LEN];
+  dedupe_globals *globals;
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  write(1, out_buf, strlen(out_buf));
+#endif
+
+  globals = (dedupe_globals *)private_data;
+
+ 
+  pthread_mutex_destroy(&globals->lk);
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  write(1, out_buf, strlen(out_buf));
+#endif
+
+}
+
 static struct fuse_operations dedupe_fs_oper = {
+  .init       = dedupe_fs_init,
+  .destroy    = dedupe_fs_destroy,
   .open       = dedupe_fs_open,
   .release    = dedupe_fs_release,
   .getattr    = dedupe_fs_getattr,
@@ -634,32 +711,9 @@ static struct fuse_operations dedupe_fs_oper = {
 
 int main(int argc, char **argv) {
 
-  int res = 0;
-  char out_buf[MAX_PATH_LEN];
-
-  pthread_t thr;
-  pthread_attr_t thr_attr;
-  thread_arg_t thr_arg;
-
   if(argc < 2 || argc > 3) {
     usage();
   }
-#if 0
-  pthread_attr_init(&thr_attr);
 
-  res = pthread_attr_setdetachstate(&thr_attr, PTHREAD_CREATE_DETACHED);
-  if(res < SUCCESS) {
-    sprintf(out_buf, "[%s] unable to set attr to PTHREAD_CREATE_DETACHED\n", __FUNCTION__);
-    write(1, out_buf, strlen(out_buf));
-  }
-
-  if(FAILED == pthread_create(&thr, &thr_attr, lazy_worker_thread, &thr_arg)) {
-    sprintf(out_buf, "[%s] lazy worker creation failed\n", __FUNCTION__);
-    write(1, out_buf, strlen(out_buf));
-    perror("");
-  }
-
-  pthread_attr_destroy(&thr_attr);
-#endif
   return fuse_main(argc, argv, &dedupe_fs_oper, NULL);
 }

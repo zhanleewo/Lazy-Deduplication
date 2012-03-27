@@ -6,7 +6,7 @@ DEBUGFLAGS=-DDEBUG -DHAVE_CONFIG_H -D_FILE_OFFSET_BITS=64 -D_REENTRANT
 LINK_FLAGS=-lpthread -lm
 SECURITY_FLAGS = -lgcrypt -lgpg-error
 
-dedupe: rabinsha1
+dedupe: clean rabinsha1
 	rm -fr /tmp/dedupe_*
 	mkdir /tmp/dedupe_file_store
 	mkdir /tmp/dedupe_metadata

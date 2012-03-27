@@ -141,6 +141,8 @@ void process_initial_file_store(char *path) {
         write(1, out_buf, strlen(out_buf));
       }
 
+      // TODO - redesign for locks - if already taken -EWOULDBLOCK then return w/o unlinking the file.
+      // TODO - remove a dir from initial file store only if no files exist in it
       // TODO - Detect the boundaries in the file using Rabin-Karp Fingerprinting Algorithm
       // TODO - Calculate the hash value on each data block of the file using SHA-1 (160 bits)
       // TODO - Store the hash values in the metadata file after the stat information
