@@ -397,6 +397,8 @@ int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
     write(1, out_buf, strlen(out_buf));
   }
 
+  fi->lock_owner = gettid();
+
   pthread_mutex_unlock(&globals.lk);
 
 #ifdef DEBUG
@@ -665,17 +667,14 @@ void * dedupe_fs_init(struct fuse_conn_info *conn) {
 
 void dedupe_fs_destroy(void *private_data) {
   char out_buf[BUF_LEN];
-  dedupe_globals *globals;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   write(1, out_buf, strlen(out_buf));
 #endif
 
-  globals = (dedupe_globals *)private_data;
+  pthread_mutex_destroy(&globals.lk);
 
- 
-  pthread_mutex_destroy(&globals->lk);
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   write(1, out_buf, strlen(out_buf));

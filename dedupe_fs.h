@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
 #include <sys/file.h>
 
 #include <errno.h>
@@ -28,6 +30,10 @@
 #ifndef FALSE
 #define FALSE 0
 #endif
+
+static pid_t gettid(void) {
+  return syscall(SYS_gettid);
+}
 
 typedef struct thread_arg {
   int thr_num;
