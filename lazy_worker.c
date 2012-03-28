@@ -1,10 +1,10 @@
 #include "dedupe_fs.h"
 
-extern char *dedupe_ini_file_store;
+extern char *dedupe_file_store;
 extern char *dedupe_metadata;
 extern char *dedupe_hashes;
 
-extern void dedupe_fs_fullpath(const char *, const char *);
+extern void dedupe_fs_filestore_path(const char *, const char *);
 
 extern int dedupe_fs_getattr(const char *, struct stat *);
 extern int dedupe_fs_mkdir(const char *, mode_t);
@@ -19,7 +19,7 @@ extern int dedupe_fs_release(const char *, struct fuse_file_info *);
 int create_stat_buf(struct stat *stbuf, char *stat_buf, size_t *len) {
 
   sprintf(stat_buf, 
-    "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu", 
+    "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu\n", 
     stbuf->st_dev, 
     stbuf->st_ino, 
     stbuf->st_mode,
@@ -58,7 +58,7 @@ void process_initial_file_store(char *path) {
 
   struct fuse_file_info fi;
 
-  dedupe_fs_fullpath(ab_path, path);
+  dedupe_fs_filestore_path(ab_path, path);
 
   dp = opendir(ab_path);
   if(NULL == dp) {
@@ -127,9 +127,11 @@ void process_initial_file_store(char *path) {
         write(1, out_buf, strlen(out_buf));
       }
 
+      memset(&stat_buf, 0, STAT_LEN);
+
       create_stat_buf(&stbuf, stat_buf, &stat_len);
 
-      res = dedupe_fs_write(meta_path, (char *)stat_buf, stat_len, 0, &fi);
+      res = dedupe_fs_write(meta_path, (char *)stat_buf, STAT_LEN, 0, &fi);
       if(res < 0) {
         sprintf(out_buf, "[%s] write failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
