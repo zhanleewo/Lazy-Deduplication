@@ -26,7 +26,6 @@ void dedupe_fs_filestore_path(char ab_path[MAX_PATH_LEN], const char *path) {
   memset(ab_path, 0, MAX_PATH_LEN);
   strcpy(ab_path, dedupe_file_store);
   strcat(ab_path, path);
-
   return;
 }
 
@@ -35,7 +34,6 @@ void dedupe_fs_metadata_path(char ab_path[MAX_PATH_LEN], const char *path) {
   memset(ab_path, 0, MAX_PATH_LEN);
   strcpy(ab_path, dedupe_metadata);
   strcat(ab_path, path);
-
   return;
 }
 
@@ -108,6 +106,7 @@ int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
               &stbuf->st_mtime, 
               &stbuf->st_ctime);
         }
+        dedupe_fs_release(new_path, &fi);
       }
     }
   }
@@ -134,8 +133,7 @@ static int dedupe_fs_opendir(
   write(1, out_buf, strlen(out_buf));
 #endif
 
-  dedupe_fs_filestore_path(ab_path, path);
-
+  dedupe_fs_metadata_path(ab_path, path);
 
   // TODO: Add the getattr logic here for opendir and other system calls
   dp = opendir(ab_path);
@@ -383,8 +381,12 @@ static int dedupe_fs_access(const char *path, int mask) {
   dedupe_fs_filestore_path(ab_path, path);
 
   res = access(ab_path, mask);
-  if(FAILED == res)
-    res = -errno;
+  if(FAILED == res) {
+    dedupe_fs_metadata_path(ab_path, path);
+    res = access(ab_path, mask);
+    if(FAILED == res)
+      res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
