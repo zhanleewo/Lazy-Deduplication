@@ -1,5 +1,7 @@
 #include "dedupe_fs.h"
 
+#define ABORT abort()
+
 extern char *dedupe_file_store;
 extern char *dedupe_metadata;
 extern char *dedupe_hashes;
@@ -15,6 +17,8 @@ extern int dedupe_fs_open(const char *, struct fuse_file_info *);
 extern int dedupe_fs_write(const char *, const char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_read(const char *, const char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_release(const char *, struct fuse_file_info *);
+
+extern int compute_rabin_karp(const char *, const char *);
 
 int create_stat_buf(struct stat *stbuf, char *stat_buf, size_t *len) {
 
@@ -64,7 +68,7 @@ void process_initial_file_store(char *path) {
   if(NULL == dp) {
     sprintf(out_buf, "[%s] unable to opendir [%s] errno [%d]\n", __FUNCTION__, ab_path, errno);
     write(1, out_buf, strlen(out_buf));
-    abort();
+    ABORT;
   }
 
   while((de = readdir(dp)) != NULL) {
@@ -89,6 +93,7 @@ void process_initial_file_store(char *path) {
     if(res < 0) {
       sprintf(out_buf, "[%s] stat failed on [%s] errno [%d]\n", __FUNCTION__, new_path, errno);
       write(1, out_buf, strlen(out_buf));
+      ABORT;
     }
 
     // Setup the metadata file path
@@ -102,6 +107,7 @@ void process_initial_file_store(char *path) {
       if(res < 0) {
         sprintf(out_buf, "[%s] mkdir failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
       }
 
       process_initial_file_store(new_path);
@@ -110,6 +116,7 @@ void process_initial_file_store(char *path) {
       if(res < 0) {
         sprintf(out_buf, "[%s] rmdir failed on [%s] errno [%d]\n", __FUNCTION__, new_path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
       }
 
     } else {
@@ -118,6 +125,7 @@ void process_initial_file_store(char *path) {
       if(res < 0) {
         sprintf(out_buf, "[%s] mknod failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
       }
 
       fi.flags = O_WRONLY;
@@ -125,6 +133,7 @@ void process_initial_file_store(char *path) {
       if(res < 0) {
         sprintf(out_buf, "[%s] open failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
       }
 
       memset(&stat_buf, 0, STAT_LEN);
@@ -135,12 +144,22 @@ void process_initial_file_store(char *path) {
       if(res < 0) {
         sprintf(out_buf, "[%s] write failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
       }
 
       res = dedupe_fs_release(meta_path, &fi);
       if(res < 0) {
         sprintf(out_buf, "[%s] release failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
+      }
+
+      res = compute_rabin_karp(new_path, meta_path, &stbuf);
+      if(res < 0) {
+        sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
+        write(1, out_buf, strlen(buf));
+        //TODO decide if return or abort
+        ABORT;
       }
 
       // TODO - redesign for locks - if already taken -EWOULDBLOCK then return w/o unlinking the file.
@@ -154,6 +173,7 @@ void process_initial_file_store(char *path) {
       if(res < 0) {
         sprintf(out_buf, "[%s] unlink failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
         write(1, out_buf, strlen(out_buf));
+        ABORT;
       }
     }
 
