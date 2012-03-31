@@ -5,6 +5,8 @@
 #include "sha1.h"
 
 extern int dedupe_fs_open(const char *, struct fuse_file_info *);
+extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
 long long int hash_prev=0;
 long long int hash_current=0;
@@ -20,7 +22,7 @@ int pattern_match(long long int rkhash)
   else
   {
     return FALSE;
-  }	
+  }
 }
 
 long int Rabin_Karp_Hash(char substring[],long long int start_index,long long int end_index) 
@@ -44,9 +46,8 @@ long int Rabin_Karp_Hash(char substring[],long long int start_index,long long in
   return hash_current;
 }
 
-char * copy_substring(char *str, int start,int end)
+char * copy_substring(char *str, char *s, int start,int end)
 {
-  char *s = (char *)malloc(end-start+2);
   int i=0;
   while(start+i<=end)
   {
@@ -54,16 +55,7 @@ char * copy_substring(char *str, int start,int end)
     i++;
   }
   s[i]='\0';
-  //printf("The substring is %s\n",s);
   return s;
-
-  /*char *to;
-  //printf("Block size insaide function is %d - %d", start,end);
-  to = (char *)malloc(end-start+2);
-  to=strndup(str+start, end);
-  //printf("%s",to);
-  return to;
-   */
 }
 
 void create_chunkfile(char str[],char shastr[], size_t length)
@@ -88,151 +80,115 @@ void create_chunkfile(char str[],char shastr[], size_t length)
   fclose(filech);
 }
 
-int compute_rabin_karp(char *filestore_path, char *meta_path, struct stat *stbuf) {
-  int res = 0, readcnt = 0;
+int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
+
+  int res = 0, readcnt = 0, pos = 0;
+  int nbytes = 0, old_data_len = 0;
+  int flag = TRUE;
 
   long long int rkhash = 0;
   long long int stblk = 0, endblk = 0;
 
-  off_t st_offset = 0;
-  char out_bufp[BUF_LEN];
+  off_t read_off = 0, write_off = 0;
+  char out_buf[BUF_LEN], *sha1_out = NULL;
   char filedata[MAXCHUNK + 1];
+  char temp_data[MAXCHUNK + 1];
+  char shadata[MAXCHUNK + 1];
   struct fuse_file_info fi;
+
+  nbytes = MAXCHUNK;
+  write_off = f_args->offset;
 
   res = dedupe_fs_open(filestore_path, &fi);
   if(res < 0) {
     sprintf(out_buf, "[%s] open failed error [%d]\n", __FUNCTION__, errno);
     write(1, out_buf, strlen(out_buf));
+    ABORT;
   }
 
   while(TRUE) {
-    res = dedupe_fs_read(filestore_path, filedata, MAXCHUNK, st_offset, &fi);
+
+    if(old_data_len > 0) {
+      memcpy(filedata, temp_data, old_data_len);
+      nbytes = MAXCHUNK - old_data_len;
+    }
+
+    res = dedupe_fs_read(filestore_path, filedata, nbytes, read_off, &fi);
     if(res < 0) {
       sprintf(out_buf, "[%s] read failed error [%d]\n", __FUNCTION__, errno);
       write(1, out_buf, strlen(out_buf));
       abort();
     }
 
-    rkhash = Rabin_Karp_Hash(readfilestring,i,endblock);
+    read_off += res;
+
+    stblk = endblk = 0;
+    pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
+    endblk = SUBSTRING_LEN - 1 + pos;
+
+    if(endblk > old_data_len + res) {
+      endblk = old_data_len + res;
+    }
+
+    while(TRUE) {
+
+      rkhash = Rabin_Karp_Hash(filedata, pos, endblk);
+
+      if(SUCCESS == pattern_match(rkhash)) {
+
+        copy_substring(filedata, shadata, stblk, endblk);
+        sha1_out = sha1(shadata);
+        //create_chunkfile(shadata, sha1_out, endblk-stblk+1);
+     
+        dedupe_fs_write(f_args->path, sha1_out, strlen(sha1_out), write_off, f_args->fi);
+     
+        write_off += strlen(sha1_out);
+     
+        free(sha1_out);
+        sha1_out = NULL;
+     
+        old_data_len = MAXCHUNK - endblk;
+        if(old_data_len > 0) {
+          memset(temp_data, 0, MAXCHUNK);
+          memcpy(temp_data, filedata + endblk + 1, old_data_len);
+        }
+
+        break;
+
+      } else if((endblk-stblk+1) == MAXCHUNK) {
+
+        //printf("inside Max chunk block");
+        //printf("Block size is %d to %d\n",startblock, endblock);
+        copy_substring(filedata, shadata, stblk, endblk);
+        //printf("%s - %s\n",shastring,sha1(shastring));
+        sha1_out = sha1(shadata);
+        //create_chunkfile(shadata, sha1_out, endblk-stblk+1);
+        dedupe_fs_write(f_args->path, sha1_out, strlen(sha1_out), write_off, f_args->fi);
+        //printf("The readstring is %s\n",readfilestring);
+        write_off += strlen(sha1_out);
+        old_data_len = 0;
+
+        free(sha1_out);
+        sha1_out = NULL;
+
+        break;
+
+      } else  {
+        pos++;
+        endblk++;
+      }
+    }
 
     readcnt += res;
-    if(readcnt == stbuf.st_size) {
+    if(readcnt == stbuf->st_size) {
       break;
     }
   }
-}
 
-int main(int argc, char *argv[])
-{
-  FILE *fp,*metafp;
-  char * readfilestring,*metafile;
-  long long int file_size,file_read,len;
-  long long int rkhash;
-  long long int startblock=0,endblock=0;
-  int i=0,j=0,flag=0;
-  char *shastring;
-
-  // To open each file
-  fp = fopen(argv[1],"rb");
-  if(fp==NULL)
-  {
-    printf("File read error");
-    return 1;
+  res = dedupe_fs_release(filestore_path, &fi);
+  if(res < 0) {
+    sprintf(out_buf, "[%s] release failed on [%s] errno [%d]\n", __FUNCTION__,filestore_path, errno);
+    write(1, out_buf, strlen(out_buf));
+    ABORT;
   }
-
-  // To obtain file size
-  fseek (fp , 0 , SEEK_END);
-  file_size = ftell (fp);
-  rewind (fp);
-
-  readfilestring = (char *)malloc(file_size+1); 
-
-  if(readfilestring==NULL)
-  {
-    printf("Memory allocation read in file input string");
-  }
-
-  // Copy the file into the string buffer
-  file_read = fread(readfilestring,1,file_size,fp);
-  if(file_read != file_size)
-  {
-    printf("File not read into the buffer completely");
-    return 1;
-  }
-
-  // Creating the meta file
-
-  metafile = (char *)malloc(strlen(argv[1]+5));
-  strcpy(metafile,argv[1]);
-  strcat(metafile,".meta");
-  metafp = fopen(metafile,"wb");
-
-  printf("The Meta data file - %s\n",metafile);
-  //printf("%s\n",readfilestring);
-  //printf("%d\n",strlen(readfilestring));
-  len = strlen(readfilestring)-1;
-
-  while(endblock <= len) 
-  {
-    if(flag==0)
-    {
-      startblock = endblock;
-      i =(startblock + MINCHUNK) - SUBSTRING_LEN;
-      endblock=SUBSTRING_LEN-1+i;
-      flag++;
-    }
-    if(endblock >= len)
-    {
-      //printf("Block size is %d to %d\n",startblock,len);
-      shastring = copy_substring(readfilestring,startblock,len);
-      //printf("%s -  %s\n",shastring,sha1(shastring));
-      create_chunkfile(shastring,sha1(shastring), len-startblock+1);
-      fprintf(metafp,sha1(shastring));
-      fprintf(metafp,"\n");
-      //printf("End of file\n");
-      free(shastring);
-      break;
-    } 
-    rkhash = Rabin_Karp_Hash(readfilestring,i,endblock);
-    //printf("%ld\n",rkhash);
-    if(pattern_match(rkhash))
-    {
-      //printf("\nInside if\n");
-      //printf("Block size is %d to %d\n",startblock,endblock);
-      shastring = copy_substring(readfilestring,startblock,endblock);
-      //printf("%s - %s\n",shastring,sha1(shastring));
-      create_chunkfile(shastring,sha1(shastring), endblock-startblock+1);
-      fprintf(metafp,sha1(shastring));
-      fprintf(metafp,"\n");
-      flag=0;
-      free(shastring);		
-    }
-    else if((endblock-startblock+1)==MAXCHUNK)
-    {
-      //printf("inside Max chunk block");
-      //printf("Block size is %d to %d\n",startblock, endblock);
-      shastring = copy_substring(readfilestring,startblock,endblock);
-      //printf("%s - %s\n",shastring,sha1(shastring));
-      create_chunkfile(shastring,sha1(shastring), endblock-startblock+1);
-      fprintf(metafp,sha1(shastring));
-      fprintf(metafp,"\n");
-      //printf("The readstring is %s\n",readfilestring);
-      flag=0;
-      free(shastring);
-    }
-    else
-    { 
-      //printf("Inside else\n");
-    }
-    //printf("The i value inside loop%d\n",i);
-    i++;
-    endblock++;
-    //printf("The value of %d - %d - %d",i,endblock,len); 
-  }
-  //printf("End of while loop");
-
-  fclose(fp);
-  fclose(metafp);
-  free(readfilestring);   // Some memory corruption error when this is uncommented 
-  return 0;
 }

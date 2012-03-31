@@ -34,6 +34,8 @@
 #define FALSE 0
 #endif
 
+#define ABORT abort()
+
 static pid_t gettid(void) {
   return syscall(SYS_gettid);
 }
@@ -48,5 +50,11 @@ typedef struct dedupe_fs_globals {
   thread_arg_t      thr_arg;
   pthread_mutex_t   lk;
 } dedupe_globals;
+
+typedef struct _file_args {
+  char *path;
+  off_t offset;
+  struct fuse_file_info *fi;
+} file_args;
 
 #endif /* DEDUPE_FS_H */

@@ -20,7 +20,7 @@ char* sha1(char string[])
 
 	/* output sha1 hash - converted to hex representation
 	* 2 hex digits for every byte + 1 for trailing \0 */
-	char *out = (char *) malloc( sizeof(char) * ((hash_len*2)+1) );
+	char *out = (char *) malloc( sizeof(char) * ((hash_len*2)+2) );
 	char *p = out;
 
 	/* calculate the SHA1 digest. This is a bit of a shortcut function
@@ -34,6 +34,7 @@ char* sha1(char string[])
 	{
 		snprintf ( p, 3, "%02x", hash[i] );
 	}
+        out[hash_len*2] = '\n';
+        out[hash_len*2+1] = '\0';
 	return out;
-
 }

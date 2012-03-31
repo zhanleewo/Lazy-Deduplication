@@ -1,7 +1,5 @@
 #include "dedupe_fs.h"
 
-#define ABORT abort()
-
 extern char *dedupe_file_store;
 extern char *dedupe_metadata;
 extern char *dedupe_hashes;
@@ -18,7 +16,7 @@ extern int dedupe_fs_write(const char *, const char *, size_t, off_t, struct fus
 extern int dedupe_fs_read(const char *, const char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_release(const char *, struct fuse_file_info *);
 
-extern int compute_rabin_karp(const char *, const char *);
+extern int compute_rabin_karp(const char *, file_args *, struct stat *);
 
 int create_stat_buf(struct stat *stbuf, char *stat_buf, size_t *len) {
 
@@ -61,6 +59,7 @@ void process_initial_file_store(char *path) {
   char stat_buf[STAT_LEN];
 
   struct fuse_file_info fi;
+  file_args f_args;
 
   dedupe_fs_filestore_path(ab_path, path);
 
@@ -147,18 +146,22 @@ void process_initial_file_store(char *path) {
         ABORT;
       }
 
+      f_args.path = meta_path;
+      f_args.offset = STAT_LEN;
+      f_args.fi = &fi;
+
+      res = compute_rabin_karp(new_path, &f_args, &stbuf);
+      if(res < 0) {
+        sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
+        write(1, out_buf, strlen(out_buf));
+        //TODO decide if return or abort
+        ABORT;
+      }
+
       res = dedupe_fs_release(meta_path, &fi);
       if(res < 0) {
         sprintf(out_buf, "[%s] release failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
         write(1, out_buf, strlen(out_buf));
-        ABORT;
-      }
-
-      res = compute_rabin_karp(new_path, meta_path, &stbuf);
-      if(res < 0) {
-        sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
-        write(1, out_buf, strlen(buf));
-        //TODO decide if return or abort
         ABORT;
       }
 
