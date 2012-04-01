@@ -16,14 +16,14 @@ extern int dedupe_fs_releasedir(const char *, struct fuse_file_info *);
 extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
-long long int hash_prev=0;
-long long int hash_current=0;
+unsigned long long int hash_prev=0;
+unsigned long long int hash_current=0;
 
-int pattern_match(long long int rkhash)
+int pattern_match(unsigned long long int rkhash)
 {
-  unsigned int num; // Based on the value of MODULO and BASE , the datatype of this has to be changed
-  num = (rkhash & BITMASK);
-  if(num)
+  unsigned long long int num; // Based on the value of MODULO and BASE , the datatype of this has to be changed
+  num = (rkhash & (unsigned long long int)BITMASK);
+  if(num == BITMASK)
   {
     return TRUE;
   }
@@ -33,29 +33,29 @@ int pattern_match(long long int rkhash)
   }
 }
 
-long int Rabin_Karp_Hash(char substring[],long long int start_index,long long int end_index) 
+unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index) 
 {
-  int i,power;
+  unsigned long long int i,power;
   if(start_index==0)
   {
     for(i=start_index;i<=end_index;i++)
     {
-      power = (int) (pow(BASE,(SUBSTRING_LEN-1-i)));
+      power = (unsigned long long int) (pow(BASE,(SUBSTRING_LEN-1-i)));
       hash_current += (((substring[i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME);
     }
   }
   else
   {
-    hash_current=((((hash_prev%MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (((int)pow(BASE,SUBSTRING_LEN-1)) % MODULO_PRIME) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[start_index+end_index] % MODULO_PRIME) % MODULO_PRIME); 
+    hash_current=((((hash_prev%MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (((unsigned long long int)pow(BASE,SUBSTRING_LEN-1)) % MODULO_PRIME) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[start_index+end_index] % MODULO_PRIME) % MODULO_PRIME); 
 
   }
   hash_prev = hash_current;	
   return hash_current;
 }
 
-char* copy_substring(char *str, char *s, int start,int end)
+char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
 {
-  int i=0;
+  unsigned long long int i=0;
   while(start+i<=end)
   {
     s[i] = str[start+i];
@@ -79,7 +79,7 @@ void create_dir_search_str(char *dir_srchstr, char *sha1) {
 
 void create_chunkfile(char *filechunk, char *sha1, size_t len)
 {
-  int res = 0, nlinks_num = 0;
+  unsigned long long int res = 0, nlinks_num = 0;
 
   char out_buf[BUF_LEN] = {0};
   char dir_srchstr[MAX_PATH_LEN] = {0};
@@ -282,11 +282,11 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
-  int res = 0, readcnt = 0, pos = 0;
-  int nbytes = 0, old_data_len = 0;
+  unsigned long long int res = 0, readcnt = 0, pos = 0;
+  unsigned long long int nbytes = 0, old_data_len = 0;
   int flag = TRUE;
 
-  long long int rkhash = 0;
+  unsigned long long int rkhash = 0;
 
   off_t stblk = 0, endblk = 0;
   off_t read_off = 0, write_off = 0, st_off = 0;

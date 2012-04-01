@@ -19,11 +19,11 @@
 
 #define OFF_HASH_LEN 2*INT_MAX_LEN+HEXA_HASH_LEN+1
 
-int pattern_match(long long int rkhash);
+int pattern_match(unsigned long long int rkhash);
 
-long int Rabin_Karp_Hash(char substring[],long long int start_index,long long int end_index);
+unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index);
 
-char * copy_substring(char *str, char *s, int start,int end);
+char * copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end);
 
 void create_chunkfile(char str[],char shastr[], size_t);
 
