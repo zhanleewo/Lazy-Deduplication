@@ -138,6 +138,7 @@ void process_initial_file_store(char *path) {
       memset(&stat_buf, 0, STAT_LEN);
 
       create_stat_buf(&stbuf, stat_buf, &stat_len);
+      stat_buf[STAT_LEN-1] = '\n';
 
       res = dedupe_fs_write(meta_path, (char *)stat_buf, STAT_LEN, 0, &fi);
       if(res < 0) {
@@ -146,16 +147,19 @@ void process_initial_file_store(char *path) {
         ABORT;
       }
 
-      f_args.path = meta_path;
-      f_args.offset = STAT_LEN;
-      f_args.fi = &fi;
+      if(stbuf.st_size > 0) {
 
-      res = compute_rabin_karp(new_path, &f_args, &stbuf);
-      if(res < 0) {
-        sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
-        write(1, out_buf, strlen(out_buf));
-        //TODO decide if return or abort
-        ABORT;
+        f_args.path = meta_path;
+        f_args.offset = STAT_LEN;
+        f_args.fi = &fi;
+
+        res = compute_rabin_karp(new_path, &f_args, &stbuf);
+        if(res < 0) {
+          sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
+          write(1, out_buf, strlen(out_buf));
+          //TODO decide if return or abort
+          ABORT;
+        }
       }
 
       res = dedupe_fs_release(meta_path, &fi);

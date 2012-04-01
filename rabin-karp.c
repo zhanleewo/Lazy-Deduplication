@@ -1,10 +1,16 @@
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <math.h>
 #include "rabin-karp.h"
 #include "sha1.h"
 
+extern char *dedupe_hashes;
+
 extern int dedupe_fs_open(const char *, struct fuse_file_info *);
+extern int dedupe_fs_opendir(const char *, struct fuse_file_info *);
+extern int dedupe_fs_mkdir(const char *, mode_t);
+extern int dedupe_fs_releasedir(const char *, struct fuse_file_info *);
 extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
@@ -42,11 +48,10 @@ long int Rabin_Karp_Hash(char substring[],long long int start_index,long long in
 
   }
   hash_prev = hash_current;	
-  //printf("The Rabin hash string is %s\n",substring);
   return hash_current;
 }
 
-char * copy_substring(char *str, char *s, int start,int end)
+char* copy_substring(char *str, char *s, int start,int end)
 {
   int i=0;
   while(start+i<=end)
@@ -58,26 +63,37 @@ char * copy_substring(char *str, char *s, int start,int end)
   return s;
 }
 
-void create_chunkfile(char str[],char shastr[], size_t length)
+void create_dir_search_str(char *dir_srchstr, char *sha1) {
+  strcat(dir_srchstr, dedupe_hashes);
+  strcat(dir_srchstr, "/");
+  strncat(dir_srchstr, sha1, 2);
+  strcat(dir_srchstr, "/");
+  strncat(dir_srchstr, sha1+2, 4);
+  strcat(dir_srchstr, "/");
+  strncat(dir_srchstr, sha1+6, 8);
+  strcat(dir_srchstr, "/");
+  strcat(dir_srchstr, sha1+14);
+}
+
+void create_chunkfile(char *filechunk, char *sha1, off_t len)
 {
-  FILE *filech;
-  char *filename = (char *)malloc(strlen(shastr)+4);
-  strcpy(filename,shastr);
-  strcat(filename,".txt");
-  printf("Chunk File name - %s\n",filename);
-  filech = fopen(filename,"wb");
-  if(filech == NULL)
-  {
-    printf("File chunk not created or returned");
+  int res = 0;
+  char dir_srchstr[MAX_PATH_LEN];
+  struct fuse_file_info fi;
+
+  //remove the trailing newline from sha1
+  sha1[strlen(sha1)-1] = '\0';
+
+  strcpy(dir_srchstr, "/../..");
+  create_dir_search_str(dir_srchstr, sha1);
+
+  res = dedupe_fs_opendir(dir_srchstr, &fi);
+  if(res == -ENOENT) {
+    res = dedupe_fs_mkdir(dir_srchstr, 0644);
+  } else {
+    res = dedupe_fs_releasedir(dir_srchstr, &fi);
   }
-  else
-  {
-    //printf("Chunk File created");
-    //fprintf(filech,str);
-    fwrite(str, 1, length, filech);
-  }
-  free(filename);
-  fclose(filech);
+
 }
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
@@ -87,13 +103,15 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   int flag = TRUE;
 
   long long int rkhash = 0;
-  long long int stblk = 0, endblk = 0;
 
-  off_t read_off = 0, write_off = 0;
+  off_t stblk = 0, endblk = 0;
+  off_t read_off = 0, write_off = 0, st_off = 0;
+
   char out_buf[BUF_LEN], *sha1_out = NULL;
-  char filedata[MAXCHUNK + 1];
-  char temp_data[MAXCHUNK + 1];
-  char shadata[MAXCHUNK + 1];
+  char filedata[MAXCHUNK + 1] = {0};
+  char temp_data[MAXCHUNK + 1] = {0};
+  char filechunk[MAXCHUNK + 1] = {0};
+  char meta_data[OFF_HASH_LEN] = {0};
   struct fuse_file_info fi;
 
   nbytes = MAXCHUNK;
@@ -108,18 +126,22 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
   while(TRUE) {
 
-    if(old_data_len > 0) {
-      memcpy(filedata, temp_data, old_data_len);
-      nbytes = MAXCHUNK - old_data_len;
+    memcpy(filedata, temp_data, old_data_len);
+    nbytes = MAXCHUNK - old_data_len;
+    st_off = read_off - old_data_len;
+
+    if(read_off < stbuf->st_size) {
+      res = dedupe_fs_read(filestore_path, filedata, nbytes, read_off, &fi);
+      if(res < 0) {
+        sprintf(out_buf, "[%s] read failed error [%d]\n", __FUNCTION__, errno);
+        write(1, out_buf, strlen(out_buf));
+        abort();
+      }
+    } else {
+      res = 0;
     }
 
-    res = dedupe_fs_read(filestore_path, filedata, nbytes, read_off, &fi);
-    if(res < 0) {
-      sprintf(out_buf, "[%s] read failed error [%d]\n", __FUNCTION__, errno);
-      write(1, out_buf, strlen(out_buf));
-      abort();
-    }
-
+    readcnt += res;
     read_off += res;
 
     stblk = endblk = 0;
@@ -136,18 +158,23 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
       if(SUCCESS == pattern_match(rkhash)) {
 
-        copy_substring(filedata, shadata, stblk, endblk);
-        sha1_out = sha1(shadata);
-        //create_chunkfile(shadata, sha1_out, endblk-stblk+1);
+        copy_substring(filedata, filechunk, stblk, endblk);
+        sha1_out = sha1(filechunk, endblk-stblk+1);
+
+        // TODO Check if the chunk (hashdata) already exists in the db
+        create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
+
+        memset(meta_data, 0, OFF_HASH_LEN);
+        snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s", st_off, st_off+endblk, sha1_out);
+
+        dedupe_fs_write(f_args->path, meta_data, strlen(meta_data), write_off, f_args->fi);
      
-        dedupe_fs_write(f_args->path, sha1_out, strlen(sha1_out), write_off, f_args->fi);
-     
-        write_off += strlen(sha1_out);
+        write_off += strlen(meta_data);
      
         free(sha1_out);
         sha1_out = NULL;
      
-        old_data_len = MAXCHUNK - endblk;
+        old_data_len = MAXCHUNK - endblk - 1;
         if(old_data_len > 0) {
           memset(temp_data, 0, MAXCHUNK);
           memcpy(temp_data, filedata + endblk + 1, old_data_len);
@@ -155,17 +182,24 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
         break;
 
-      } else if((endblk-stblk+1) == MAXCHUNK) {
+      } else if(((endblk-stblk+1) == MAXCHUNK) ||
+          (readcnt == stbuf->st_size)) {
 
-        //printf("inside Max chunk block");
-        //printf("Block size is %d to %d\n",startblock, endblock);
-        copy_substring(filedata, shadata, stblk, endblk);
-        //printf("%s - %s\n",shastring,sha1(shastring));
-        sha1_out = sha1(shadata);
-        //create_chunkfile(shadata, sha1_out, endblk-stblk+1);
-        dedupe_fs_write(f_args->path, sha1_out, strlen(sha1_out), write_off, f_args->fi);
-        //printf("The readstring is %s\n",readfilestring);
-        write_off += strlen(sha1_out);
+
+        if((readcnt == stbuf->st_size) &&
+            (endblk < old_data_len+res)) {
+          endblk = old_data_len + res;
+        }
+        copy_substring(filedata, filechunk, stblk, endblk);
+        sha1_out = sha1(filechunk, endblk-stblk+1);
+        // TODO Check if the chunk (hashdata) already exists in the db
+        create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
+
+        memset(meta_data, 0, OFF_HASH_LEN);
+        snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s", st_off, st_off+endblk, sha1_out);
+
+        dedupe_fs_write(f_args->path, meta_data, strlen(meta_data), write_off, f_args->fi);
+        write_off += strlen(meta_data);
         old_data_len = 0;
 
         free(sha1_out);
@@ -179,7 +213,6 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       }
     }
 
-    readcnt += res;
     if(readcnt == stbuf->st_size) {
       break;
     }

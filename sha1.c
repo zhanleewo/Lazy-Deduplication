@@ -5,11 +5,8 @@
 #include <stdlib.h>
 #include "sha1.h"
 
-char* sha1(char string[])
+char* sha1(char string[], int msg_len)
 {
-
-	/* Length of message to encrypt */
-	int msg_len = strlen(string);
 
 	/* Length of resulting sha1 hash - gcry_md_get_algo_dlen
 	*returns digest lenght for an algo */

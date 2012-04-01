@@ -119,7 +119,7 @@ int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
   return 0;
 }
 
-static int dedupe_fs_opendir(
+int dedupe_fs_opendir(
     const char *path, 
     struct fuse_file_info *fi) {
   int res = 0;
@@ -541,7 +541,7 @@ int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
   return res;
 }
 
-static int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
+int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
   char out_buf[BUF_LEN];
 
 #ifdef DEBUG

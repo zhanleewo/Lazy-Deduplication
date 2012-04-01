@@ -4,6 +4,8 @@
 #include "dedupe_fs.h"
 
 #define SUBSTRING_LEN 4096
+#define HEXA_HASH_LEN 41
+#define INT_MAX_LEN 21
 #define BASE 5
 #define MODULO_PRIME 7
 #define PATTERN_HASH 4
@@ -13,13 +15,15 @@
 #define FALSE 0
 #define BITMASK 15
 
+#define OFF_HASH_LEN 2*INT_MAX_LEN+HEXA_HASH_LEN+1
+
 int pattern_match(long long int rkhash);
 
 long int Rabin_Karp_Hash(char substring[],long long int start_index,long long int end_index);
 
 char * copy_substring(char *str, char *s, int start,int end);
 
-void create_chunkfile(char str[],char shastr[], size_t);
+void create_chunkfile(char str[],char shastr[], off_t);
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf);
 #endif
