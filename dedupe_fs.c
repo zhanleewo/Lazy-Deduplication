@@ -8,6 +8,9 @@
 char *dedupe_file_store = "/tmp/dedupe_file_store";
 char *dedupe_metadata = "/tmp/dedupe_metadata";
 char *dedupe_hashes = "/tmp/dedupe_hashes";
+char *nlinks = "nlinks.txt";
+
+
 dedupe_globals globals;
 
 extern void *lazy_worker_thread(void *);
@@ -16,7 +19,7 @@ static void usage() {
   char out_buf[BUF_LEN];
 
   sprintf(out_buf, "dedupe_fs [MOUNT_POINT]\n");
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 
   exit(1);
 }
@@ -50,7 +53,7 @@ int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   memset(stbuf, 0, sizeof(struct stat));
@@ -113,7 +116,7 @@ int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return 0;
@@ -130,7 +133,7 @@ int dedupe_fs_opendir(
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_metadata_path(ab_path, path);
@@ -144,7 +147,7 @@ int dedupe_fs_opendir(
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -164,7 +167,7 @@ static int dedupe_fs_readdir(
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dp = (DIR*) (uintptr_t)fi->fh;
@@ -184,7 +187,7 @@ static int dedupe_fs_readdir(
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -198,7 +201,7 @@ static int dedupe_fs_rename(const char *path, const char *newpath) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -210,7 +213,7 @@ static int dedupe_fs_rename(const char *path, const char *newpath) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -224,7 +227,7 @@ static int dedupe_fs_symlink(const char *path, const char *link) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_link, link);
@@ -235,7 +238,7 @@ static int dedupe_fs_symlink(const char *path, const char *link) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -250,7 +253,7 @@ static int dedupe_fs_link(const char *path, const char *newpath) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -262,7 +265,7 @@ static int dedupe_fs_link(const char *path, const char *newpath) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -276,7 +279,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -287,7 +290,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -301,7 +304,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -312,7 +315,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -326,7 +329,7 @@ int dedupe_fs_unlink(const char *path)
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -337,7 +340,7 @@ int dedupe_fs_unlink(const char *path)
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -350,7 +353,7 @@ int dedupe_fs_rmdir(const char *path) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -361,7 +364,7 @@ int dedupe_fs_rmdir(const char *path) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -375,7 +378,7 @@ static int dedupe_fs_access(const char *path, int mask) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -390,7 +393,7 @@ static int dedupe_fs_access(const char *path, int mask) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -404,7 +407,7 @@ int dedupe_fs_mkdir(const char *path, mode_t mode) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -415,7 +418,7 @@ int dedupe_fs_mkdir(const char *path, mode_t mode) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -432,7 +435,7 @@ int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   //print_fuse_file_info(fi);
@@ -452,7 +455,7 @@ int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   if(FAILED == flock(fi->fh, LOCK_EX)) {
     sprintf(out_buf, "[%s] LOCK on [%s] failed error [%d]\n",
         __FUNCTION__, path, errno);
-    write(1, out_buf, strlen(out_buf));
+    WR_2_STDOUT;
   }
 
   fi->lock_owner = gettid();
@@ -461,7 +464,7 @@ int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return SUCCESS;
@@ -474,7 +477,7 @@ int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset, struc
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   res = pread(fi->fh, buf, size, offset);
@@ -484,7 +487,7 @@ int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset, struc
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -497,7 +500,7 @@ int dedupe_fs_write(const char *path, const char *buf, size_t size, off_t offset
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   res = pwrite(fi->fh, buf, size, offset);
@@ -506,7 +509,7 @@ int dedupe_fs_write(const char *path, const char *buf, size_t size, off_t offset
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -519,13 +522,13 @@ int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   if(gettid() == fi->lock_owner) {
     if(FAILED == flock(fi->fh, LOCK_UN)) {
       sprintf(out_buf, "[%s] flock UNLOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
-      write(1, out_buf, strlen(out_buf));
+      WR_2_STDOUT;
       return -errno;
     }
     fi->lock_owner = 0;
@@ -535,7 +538,7 @@ int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -546,14 +549,14 @@ int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   closedir((DIR *) (uintptr_t) fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return SUCCESS;
@@ -567,7 +570,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -578,7 +581,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
@@ -591,7 +594,7 @@ static int dedupe_fs_utime(const char *path, struct utimbuf *ubuf) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -602,13 +605,13 @@ static int dedupe_fs_utime(const char *path, struct utimbuf *ubuf) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return res;
 }
 
-static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
+int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
   int fd = 0;
   char out_buf[BUF_LEN];
@@ -616,7 +619,7 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -624,7 +627,7 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
   fd = creat(ab_path, mode);
   if(FAILED == fd) {
     sprintf("File creation failed for %s errno:%d\n", ab_path, errno);
-    write(1, out_buf, strlen(out_buf));
+    WR_2_STDOUT;
     return -errno;
   }
 
@@ -632,7 +635,7 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return SUCCESS;
@@ -645,7 +648,7 @@ int dedupe_fs_mknod(const char *path, mode_t mode, dev_t rdev) {
   
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -663,7 +666,7 @@ int dedupe_fs_mknod(const char *path, mode_t mode, dev_t rdev) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   if(FAILED == res)
@@ -680,7 +683,7 @@ void * dedupe_fs_init(struct fuse_conn_info *conn) {
   
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   pthread_mutex_init(&globals.lk, NULL);
@@ -689,12 +692,12 @@ void * dedupe_fs_init(struct fuse_conn_info *conn) {
   res = pthread_attr_setdetachstate(&globals.thr_attr, PTHREAD_CREATE_DETACHED);
   if(res < SUCCESS) {
     sprintf(out_buf, "[%s] unable to set attr to PTHREAD_CREATE_DETACHED\n", __FUNCTION__);
-    write(1, out_buf, strlen(out_buf));
+    WR_2_STDOUT;
   }
 
   if(FAILED == pthread_create(&globals.thr_handle, &globals.thr_attr, lazy_worker_thread, &globals.thr_arg)) {
     sprintf(out_buf, "[%s] lazy worker creation failed\n", __FUNCTION__);
-    write(1, out_buf, strlen(out_buf));
+    WR_2_STDOUT;
     perror("");
   }
 
@@ -702,7 +705,7 @@ void * dedupe_fs_init(struct fuse_conn_info *conn) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   return (mycontext->private_data);
@@ -714,14 +717,14 @@ void dedupe_fs_destroy(void *private_data) {
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
   pthread_mutex_destroy(&globals.lk);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  write(1, out_buf, strlen(out_buf));
+  WR_2_STDOUT;
 #endif
 
 }

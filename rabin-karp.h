@@ -15,6 +15,8 @@
 #define FALSE 0
 #define BITMASK 15
 
+#define NLINKS_WIDTH 20
+
 #define OFF_HASH_LEN 2*INT_MAX_LEN+HEXA_HASH_LEN+1
 
 int pattern_match(long long int rkhash);
@@ -23,7 +25,7 @@ long int Rabin_Karp_Hash(char substring[],long long int start_index,long long in
 
 char * copy_substring(char *str, char *s, int start,int end);
 
-void create_chunkfile(char str[],char shastr[], off_t);
+void create_chunkfile(char str[],char shastr[], size_t);
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf);
 #endif

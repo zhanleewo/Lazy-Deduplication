@@ -36,6 +36,8 @@
 
 #define ABORT abort()
 
+#define WR_2_STDOUT write(1, out_buf, strlen(out_buf));
+
 static pid_t gettid(void) {
   return syscall(SYS_gettid);
 }

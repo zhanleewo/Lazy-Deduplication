@@ -66,7 +66,7 @@ void process_initial_file_store(char *path) {
   dp = opendir(ab_path);
   if(NULL == dp) {
     sprintf(out_buf, "[%s] unable to opendir [%s] errno [%d]\n", __FUNCTION__, ab_path, errno);
-    write(1, out_buf, strlen(out_buf));
+    WR_2_STDOUT;
     ABORT;
   }
 
@@ -85,13 +85,13 @@ void process_initial_file_store(char *path) {
 
 #ifdef DEBUG
     //sprintf(out_buf, "[%s] file name %s : file type %x\n", __FUNCTION__, new_path, de->d_type);
-    //write(1, out_buf, strlen(out_buf));
+    //WR_2_STDOUT;
 #endif
 
     res = dedupe_fs_getattr(new_path, &stbuf);
     if(res < 0) {
       sprintf(out_buf, "[%s] stat failed on [%s] errno [%d]\n", __FUNCTION__, new_path, errno);
-      write(1, out_buf, strlen(out_buf));
+      WR_2_STDOUT;
       ABORT;
     }
 
@@ -105,7 +105,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_mkdir(meta_path, stbuf.st_mode);
       if(res < 0) {
         sprintf(out_buf, "[%s] mkdir failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
 
@@ -114,7 +114,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_rmdir(new_path);
       if(res < 0) {
         sprintf(out_buf, "[%s] rmdir failed on [%s] errno [%d]\n", __FUNCTION__, new_path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
 
@@ -123,7 +123,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_mknod(meta_path, stbuf.st_mode, 0); 
       if(res < 0) {
         sprintf(out_buf, "[%s] mknod failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
 
@@ -131,7 +131,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_open(meta_path, &fi);
       if(res < 0) {
         sprintf(out_buf, "[%s] open failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
 
@@ -143,7 +143,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_write(meta_path, (char *)stat_buf, STAT_LEN, 0, &fi);
       if(res < 0) {
         sprintf(out_buf, "[%s] write failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
 
@@ -156,7 +156,7 @@ void process_initial_file_store(char *path) {
         res = compute_rabin_karp(new_path, &f_args, &stbuf);
         if(res < 0) {
           sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
-          write(1, out_buf, strlen(out_buf));
+          WR_2_STDOUT;
           //TODO decide if return or abort
           ABORT;
         }
@@ -165,7 +165,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_release(meta_path, &fi);
       if(res < 0) {
         sprintf(out_buf, "[%s] release failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
 
@@ -179,7 +179,7 @@ void process_initial_file_store(char *path) {
       res = dedupe_fs_unlink(new_path);
       if(res < 0) {
         sprintf(out_buf, "[%s] unlink failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
-        write(1, out_buf, strlen(out_buf));
+        WR_2_STDOUT;
         ABORT;
       }
     }
@@ -199,7 +199,7 @@ void *lazy_worker_thread(void *arg) {
   while(TRUE) {
 #ifdef DEBUG
     sprintf(out_buf, "[%s] executing..\n", __FUNCTION__);
-    write(1, out_buf, strlen(out_buf));
+    WR_2_STDOUT;
 #endif
 
     process_initial_file_store("");
