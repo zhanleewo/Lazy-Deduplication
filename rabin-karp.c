@@ -21,7 +21,7 @@ unsigned long long int hash_current=0;
 
 int pattern_match(unsigned long long int rkhash)
 {
-  unsigned long long int num; // Based on the value of MODULO and BASE , the datatype of this has to be changed
+  unsigned long long int num;
   num = (rkhash & (unsigned long long int)BITMASK);
   if(num == BITMASK)
   {
@@ -33,10 +33,10 @@ int pattern_match(unsigned long long int rkhash)
   }
 }
 
-unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index) 
+unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk) 
 {
   unsigned long long int i,power;
-  if(start_index==0)
+  if(newchunk==0)
   {
     for(i=start_index;i<=end_index;i++)
     {
@@ -285,6 +285,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   unsigned long long int res = 0, readcnt = 0, pos = 0;
   unsigned long long int nbytes = 0, old_data_len = 0;
   int flag = TRUE;
+  int newchunk=0;
 
   unsigned long long int rkhash = 0;
 
@@ -333,6 +334,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     stblk = endblk = 0;
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
     endblk = SUBSTRING_LEN - 1 + pos;
+    newchunk=0;
 
     if(endblk > old_data_len + res) {
       endblk = old_data_len + res;
@@ -340,7 +342,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
     while(TRUE) {
 
-      rkhash = Rabin_Karp_Hash(filedata, pos, endblk);
+      rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk);
 
       if(SUCCESS == pattern_match(rkhash)) {
 
@@ -396,6 +398,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       } else  {
         pos++;
         endblk++;
+	newchunk++;
       }
     }
 

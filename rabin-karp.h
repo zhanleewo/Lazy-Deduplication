@@ -21,7 +21,7 @@
 
 int pattern_match(unsigned long long int rkhash);
 
-unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index);
+unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk);
 
 char * copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end);
 
