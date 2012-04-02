@@ -283,7 +283,6 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
   unsigned long long int res = 0, readcnt = 0, pos = 0;
   unsigned long long int nbytes = 0, old_data_len = 0;
-  int flag = TRUE;
   int newchunk=0;
 
   unsigned long long int rkhash = 0;
