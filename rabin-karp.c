@@ -46,8 +46,7 @@ unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int s
   }
   else
   {
-    hash_current=((((hash_prev%MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (((unsigned long long int)pow(BASE,SUBSTRING_LEN-1)) % MODULO_PRIME) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME); 
-
+       hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * ((unsigned long long int)pow(BASE,SUBSTRING_LEN-1) % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;	
   }
   //hash_prev = hash_current;	
   return hash_current;
@@ -339,6 +338,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
     if(endblk > old_data_len + res) {
       endblk = old_data_len + res;
+	// Create a data chunk and exit the while loop
     }
 
     while(TRUE) {
