@@ -338,7 +338,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
     if(endblk > old_data_len + res) {
       endblk = old_data_len + res;
-	// Create a data chunk and exit the while loop
+// RAGHAV - Check for data length is less than min chunk if so create a data chunk and exit the while loop, else proceed
     }
 
     while(TRUE) {
