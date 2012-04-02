@@ -16,8 +16,6 @@ extern int dedupe_fs_releasedir(const char *, struct fuse_file_info *);
 extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
-//unsigned long long int hash_prev=0;
-//unsigned long long int hash_current=0;
 
 int pattern_match(unsigned long long int rkhash)
 {
@@ -49,7 +47,6 @@ unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int s
   {
        hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * ((unsigned long long int)pow(BASE,SUBSTRING_LEN-1) % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;	
   }
-  //hash_prev = hash_current;	
   return hash_current;
 }
 
