@@ -43,6 +43,7 @@ unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int s
       power = (unsigned long long int) (pow(BASE,(SUBSTRING_LEN-1-i)));
       hash_current += ((substring[start_index+i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME;
     }
+      hash_current = hash_current%MODULO_PRIME; 	
   }
   else
   {
