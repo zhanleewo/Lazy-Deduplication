@@ -8,7 +8,6 @@
 #define INT_MAX_LEN 21
 #define BASE 5
 #define MODULO_PRIME 7
-#define PATTERN_HASH 4
 #define MINCHUNK 4096
 #define MAXCHUNK 8192
 #define TRUE 1
@@ -21,7 +20,7 @@
 
 int pattern_match(unsigned long long int rkhash);
 
-unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk);
+unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk, unsigned long long int hash_prev);
 
 char * copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end);
 

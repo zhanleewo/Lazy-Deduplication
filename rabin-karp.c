@@ -16,8 +16,8 @@ extern int dedupe_fs_releasedir(const char *, struct fuse_file_info *);
 extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
 extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
-unsigned long long int hash_prev=0;
-unsigned long long int hash_current=0;
+//unsigned long long int hash_prev=0;
+//unsigned long long int hash_current=0;
 
 int pattern_match(unsigned long long int rkhash)
 {
@@ -33,23 +33,23 @@ int pattern_match(unsigned long long int rkhash)
   }
 }
 
-unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk) 
+unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk, unsigned long long int hash_prev) 
 {
-  unsigned long long int i,power;
+  unsigned long long int i,power,hash_current=0;
   if(newchunk==0)
   {
-    for(i=start_index;i<=end_index;i++)
+    for(i=0;i<=SUBSTRING_LEN-1;i++)
     {
       power = (unsigned long long int) (pow(BASE,(SUBSTRING_LEN-1-i)));
-      hash_current += (((substring[i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME);
+      hash_current += ((substring[start_index+i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME;
     }
   }
   else
   {
-    hash_current=((((hash_prev%MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (((unsigned long long int)pow(BASE,SUBSTRING_LEN-1)) % MODULO_PRIME) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[start_index+end_index] % MODULO_PRIME) % MODULO_PRIME); 
+    hash_current=((((hash_prev%MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (((unsigned long long int)pow(BASE,SUBSTRING_LEN-1)) % MODULO_PRIME) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME); 
 
   }
-  hash_prev = hash_current;	
+  //hash_prev = hash_current;	
   return hash_current;
 }
 
@@ -335,6 +335,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
     endblk = SUBSTRING_LEN - 1 + pos;
     newchunk=0;
+    rkhash=0;
 
     if(endblk > old_data_len + res) {
       endblk = old_data_len + res;
@@ -342,7 +343,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
     while(TRUE) {
 
-      rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk);
+      rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk,rkhash);
 
       if(SUCCESS == pattern_match(rkhash)) {
 
@@ -376,7 +377,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
         if((readcnt == stbuf->st_size) &&
             (endblk < old_data_len+res)) {
-          endblk = old_data_len + res;
+      
+    endblk = old_data_len + res;
         }
         copy_substring(filedata, filechunk, stblk, endblk);
         sha1_out = sha1(filechunk, endblk-stblk+1);
