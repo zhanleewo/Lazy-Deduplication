@@ -17,9 +17,9 @@ extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_
 extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
 
-int pattern_match(unsigned long long int rkhash)
-{
+int pattern_match(unsigned long long int rkhash) {
   unsigned long long int num;
+
   num = (rkhash & (unsigned long long int)BITMASK);
   if(num == BITMASK)
   {
@@ -31,8 +31,13 @@ int pattern_match(unsigned long long int rkhash)
   }
 }
 
-unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int start_index,unsigned long long int end_index,int newchunk, unsigned long long int hash_prev) 
-{
+unsigned long long int Rabin_Karp_Hash(
+    char substring[], 
+    unsigned long long int start_index,
+    unsigned long long int end_index,
+    int newchunk, 
+    unsigned long long int hash_prev) {
+
   unsigned long long int i,power,hash_current=0;
   if(newchunk==0)
   {
@@ -41,11 +46,11 @@ unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int s
       power = (unsigned long long int) (pow(BASE,(SUBSTRING_LEN-1-i)));
       hash_current += ((substring[start_index+i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME;
     }
-      hash_current = hash_current%MODULO_PRIME; 	
+    hash_current = hash_current%MODULO_PRIME; 	
   }
   else
   {
-       hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * ((unsigned long long int)pow(BASE,SUBSTRING_LEN-1) % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;	
+    hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * ((unsigned long long int)pow(BASE,SUBSTRING_LEN-1) % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;	
   }
   return hash_current;
 }
@@ -53,6 +58,7 @@ unsigned long long int Rabin_Karp_Hash(char substring[],unsigned long long int s
 char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
 {
   unsigned long long int i=0;
+
   while(start+i<=end)
   {
     s[i] = str[start+i];
@@ -234,12 +240,6 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
       WR_2_STDOUT;
       exit(1);
     }
-
-    /*if(FAILED == lseek(nlinks_fi.fh, 0, SEEK_SET)) {
-      sprintf(out_buf, "[%s] lseek failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
-    }*/
 
     printf("res = %d nlinks_cnt [%s]\n", res, nlinks_cnt);
 
