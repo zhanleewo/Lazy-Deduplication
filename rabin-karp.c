@@ -96,7 +96,6 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
   strcpy(dir_srchstr, "/../..");
   create_dir_search_str(dir_srchstr, sha1);
 
-  printf("dir_srchstr [%s]\n", dir_srchstr);
   res = dedupe_fs_opendir(dir_srchstr, &fi);
   if(-ENOENT == res) {
 
@@ -166,8 +165,6 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
     strcat(file_chunk_path, "/");
     strcat(file_chunk_path, sha1);
 
-    printf("file_chunk_path [%s]\n", file_chunk_path);
-
     res = dedupe_fs_create(file_chunk_path, 0755, &fi);
     if(res < 0) {
       sprintf(out_buf, "[%s] creat failed error [%d]\n", __FUNCTION__, errno);
@@ -193,8 +190,6 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
     strcpy(nlinks_path, dir_srchstr);
     strcat(nlinks_path, "/");
     strcat(nlinks_path, nlinks);
-
-    printf("nlinks_path [%s]\n", nlinks_path);
 
     res = dedupe_fs_create(nlinks_path, 0755, &fi);
     if(res < 0) {
@@ -241,16 +236,10 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
       exit(1);
     }
 
-    printf("res = %d nlinks_cnt [%s]\n", res, nlinks_cnt);
-
     sscanf(nlinks_cnt, "%d", &nlinks_num);
     nlinks_num += 1;
 
-    printf("link nct [%d]\n", nlinks_num);
-
     sprintf(nlinks_cnt, "%d", nlinks_num);
-
-    printf("link nct [%s]\n", nlinks_cnt);
 
     res = dedupe_fs_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
     if(res < 0) {
@@ -272,18 +261,14 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len)
       WR_2_STDOUT;
       exit(1);
     }
-
   }
-
 }
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
   unsigned long long int res = 0, readcnt = 0, pos = 0;
   unsigned long long int nbytes = 0, old_data_len = 0;
-  int newchunk=0;
-
-  unsigned long long int rkhash = 0;
+  unsigned long long int newchunk = 0, rkhash = 0;
 
   off_t stblk = 0, endblk = 0;
   off_t read_off = 0, write_off = 0, st_off = 0;
