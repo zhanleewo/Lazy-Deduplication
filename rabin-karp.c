@@ -80,8 +80,7 @@ void create_dir_search_str(char *dir_srchstr, char *sha1) {
   strcat(dir_srchstr, sha1+14);
 }
 
-void create_chunkfile(char *filechunk, char *sha1, size_t len)
-{
+void create_chunkfile(char *filechunk, char *sha1, size_t len) {
   unsigned long long int res = 0, nlinks_num = 0;
 
   char out_buf[BUF_LEN] = {0};
