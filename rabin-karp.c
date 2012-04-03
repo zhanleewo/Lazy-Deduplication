@@ -333,21 +333,36 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     newchunk=0;
     rkhash=0;
 
-    if(endblk > old_data_len + res) {
-      endblk = old_data_len + res;
-// RAGHAV - Check for data length is less than min chunk if so create a data chunk and exit the while loop, else proceed
+    if((old_data_len + res - 1) <= endblk) {
+      endblk = old_data_len + res - 1;
+
+      copy_substring(filedata, filechunk, stblk, endblk);
+      sha1_out = sha1(filechunk, endblk-stblk+1);
+
+      create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
+
+      memset(meta_data, 0, OFF_HASH_LEN);
+      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
+
+      dedupe_fs_write(f_args->path, meta_data, strlen(meta_data), write_off, f_args->fi);
+      write_off += strlen(meta_data);
+      old_data_len = 0;
+
+      free(sha1_out);
+      sha1_out = NULL;
+
+      break;
     }
 
     while(TRUE) {
 
       rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk,rkhash);
 
-      if(SUCCESS == pattern_match(rkhash)) {
+      if(TRUE == pattern_match(rkhash)) {
 
         copy_substring(filedata, filechunk, stblk, endblk);
         sha1_out = sha1(filechunk, endblk-stblk+1);
 
-        // TODO Check if the chunk (hashdata) already exists in the db
         create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
 
         memset(meta_data, 0, OFF_HASH_LEN);
@@ -369,17 +384,16 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         break;
 
       } else if(((endblk-stblk+1) == MAXCHUNK) ||
-          (readcnt == stbuf->st_size)) {
+          (st_off+endblk+1 == stbuf->st_size)) {
 
-
-        if((readcnt == stbuf->st_size) &&
+        /*if((readcnt == stbuf->st_size) &&
             (endblk < old_data_len+res)) {
-      
-    endblk = old_data_len + res;
-        }
+          endblk = old_data_len + res;
+        }*/
+
         copy_substring(filedata, filechunk, stblk, endblk);
         sha1_out = sha1(filechunk, endblk-stblk+1);
-        // TODO Check if the chunk (hashdata) already exists in the db
+
         create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
 
         memset(meta_data, 0, OFF_HASH_LEN);
@@ -401,7 +415,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       }
     }
 
-    if(readcnt == stbuf->st_size) {
+    if(st_off+endblk+1 == stbuf->st_size) {
       break;
     }
   }
