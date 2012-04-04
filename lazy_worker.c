@@ -1,4 +1,5 @@
 #include "dedupe_fs.h"
+#include "internal_cmds.h"
 
 extern char *dedupe_file_store;
 extern char *dedupe_metadata;
@@ -6,15 +7,15 @@ extern char *dedupe_hashes;
 
 extern void dedupe_fs_filestore_path(const char *, const char *);
 
-extern int dedupe_fs_getattr(const char *, struct stat *);
-extern int dedupe_fs_mkdir(const char *, mode_t);
-extern int dedupe_fs_mknod(const char *, mode_t, dev_t);
-extern int dedupe_fs_rmdir(const char *);
-extern int dedupe_fs_unlink(const char *);
-extern int dedupe_fs_open(const char *, struct fuse_file_info *);
-extern int dedupe_fs_write(const char *, const char *, size_t, off_t, struct fuse_file_info *);
-extern int dedupe_fs_read(const char *, const char *, size_t, off_t, struct fuse_file_info *);
-extern int dedupe_fs_release(const char *, struct fuse_file_info *);
+extern int internal_getattr(const char *, struct stat *);
+extern int internal_mkdir(const char *, mode_t);
+extern int internal_mknod(const char *, mode_t, dev_t);
+extern int internal_rmdir(const char *);
+extern int internal_unlink(const char *);
+extern int internal_open(const char *, struct fuse_file_info *);
+extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int internal_release(const char *, struct fuse_file_info *);
 
 extern int compute_rabin_karp(const char *, file_args *, struct stat *);
 
@@ -83,55 +84,42 @@ void process_initial_file_store(char *path) {
     strcat(new_path, "/");
     strcat(new_path, de->d_name);
 
-#ifdef DEBUG
-    //sprintf(out_buf, "[%s] file name %s : file type %x\n", __FUNCTION__, new_path, de->d_type);
-    //WR_2_STDOUT;
-#endif
+    strcpy(ab_path, dedupe_file_store);
+    strcat(ab_path, new_path);
 
-    res = dedupe_fs_getattr(new_path, &stbuf);
+    res = internal_getattr(ab_path, &stbuf);
     if(res < 0) {
-      sprintf(out_buf, "[%s] stat failed on [%s] errno [%d]\n", __FUNCTION__, new_path, errno);
-      WR_2_STDOUT;
       ABORT;
     }
 
     // Setup the metadata file path
-    strcpy(meta_path, "/../..");
-    strcat(meta_path, dedupe_metadata);
+    strcpy(meta_path, dedupe_metadata);
     strcat(meta_path, new_path);
 
     if(DT_DIR == de->d_type) {
 
-      res = dedupe_fs_mkdir(meta_path, stbuf.st_mode);
+      res = internal_mkdir(meta_path, stbuf.st_mode);
       if(res < 0) {
-        sprintf(out_buf, "[%s] mkdir failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
 
       process_initial_file_store(new_path);
 
-      res = dedupe_fs_rmdir(new_path);
+      res = internal_rmdir(ab_path);
       if(res < 0) {
-        sprintf(out_buf, "[%s] rmdir failed on [%s] errno [%d]\n", __FUNCTION__, new_path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
 
     } else {
 
-      res = dedupe_fs_mknod(meta_path, stbuf.st_mode, 0); 
+      res = internal_mknod(meta_path, stbuf.st_mode, 0); 
       if(res < 0) {
-        sprintf(out_buf, "[%s] mknod failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
 
       fi.flags = O_WRONLY;
-      res = dedupe_fs_open(meta_path, &fi);
+      res = internal_open(meta_path, &fi);
       if(res < 0) {
-        sprintf(out_buf, "[%s] open failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
 
@@ -140,10 +128,8 @@ void process_initial_file_store(char *path) {
       create_stat_buf(&stbuf, stat_buf, &stat_len);
       stat_buf[STAT_LEN-1] = '\n';
 
-      res = dedupe_fs_write(meta_path, (char *)stat_buf, STAT_LEN, 0, &fi);
+      res = internal_write(meta_path, (char *)stat_buf, STAT_LEN, 0, &fi);
       if(res < 0) {
-        sprintf(out_buf, "[%s] write failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
 
@@ -153,7 +139,7 @@ void process_initial_file_store(char *path) {
         f_args.offset = STAT_LEN;
         f_args.fi = &fi;
 
-        res = compute_rabin_karp(new_path, &f_args, &stbuf);
+        res = compute_rabin_karp(ab_path, &f_args, &stbuf);
         if(res < 0) {
           sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
           WR_2_STDOUT;
@@ -162,10 +148,8 @@ void process_initial_file_store(char *path) {
         }
       }
 
-      res = dedupe_fs_release(meta_path, &fi);
+      res = internal_release(meta_path, &fi);
       if(res < 0) {
-        sprintf(out_buf, "[%s] release failed on [%s] errno [%d]\n", __FUNCTION__, meta_path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
 
@@ -176,16 +160,12 @@ void process_initial_file_store(char *path) {
       // TODO - Store the hash values in the metadata file after the stat information
       // TODO - Store the hash block inside the hash store if it does not already exist
 
-      res = dedupe_fs_unlink(new_path);
+      res = internal_unlink(ab_path);
       if(res < 0) {
-        sprintf(out_buf, "[%s] unlink failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
-        WR_2_STDOUT;
         ABORT;
       }
     }
-
 #endif /* _DIRENT_HAVE_D_TYPE */
-
   }
 
   closedir(dp);

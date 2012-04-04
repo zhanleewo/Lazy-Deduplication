@@ -3,18 +3,19 @@
 #include <stdlib.h>
 #include <math.h>
 #include "rabin-karp.h"
+#include "internal_cmds.h"
 #include "sha1.h"
 
 extern char *dedupe_hashes;
 extern char *nlinks;
 
-extern int dedupe_fs_open(const char *, struct fuse_file_info *);
-extern int dedupe_fs_create(const char *, mode_t, struct fuse_file_info *);
-extern int dedupe_fs_opendir(const char *, struct fuse_file_info *);
-extern int dedupe_fs_mkdir(const char *, mode_t);
-extern int dedupe_fs_releasedir(const char *, struct fuse_file_info *);
-extern int dedupe_fs_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
-extern int dedupe_fs_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int internal_open(const char *, struct fuse_file_info *);
+extern int internal_create(const char *, mode_t, struct fuse_file_info *);
+extern int internal_opendir(const char *, struct fuse_file_info *);
+extern int internal_mkdir(const char *, mode_t);
+extern int internal_releasedir(const char *, struct fuse_file_info *);
+extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
 
 
 int pattern_match(unsigned long long int rkhash) {
@@ -69,7 +70,7 @@ char* copy_substring(char *str, char *s, unsigned long long int start,unsigned l
 }
 
 void create_dir_search_str(char *dir_srchstr, char *sha1) {
-  strcat(dir_srchstr, dedupe_hashes);
+  strcpy(dir_srchstr, dedupe_hashes);
   strcat(dir_srchstr, "/");
   strncat(dir_srchstr, sha1, 2);
   strcat(dir_srchstr, "/");
@@ -92,97 +93,81 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
   struct fuse_file_info fi, nlinks_fi;
 
-  strcpy(dir_srchstr, "/../..");
   create_dir_search_str(dir_srchstr, sha1);
 
-  res = dedupe_fs_opendir(dir_srchstr, &fi);
+  res = internal_opendir(dir_srchstr, &fi);
   if(-ENOENT == res) {
 
-    strcpy(file_chunk_path, "/../..");
-    strcat(file_chunk_path, dedupe_hashes);
+    strcpy(file_chunk_path, dedupe_hashes);
     strcat(file_chunk_path, "/");
     strncat(file_chunk_path, sha1, 2);
 
-    res = dedupe_fs_opendir(file_chunk_path, &fi);
+    res = internal_opendir(file_chunk_path, &fi);
     if(-ENOENT == res) {
-      res = dedupe_fs_mkdir(file_chunk_path, 0755);
+      res = internal_mkdir(file_chunk_path, 0755);
       if(res < 0) {
-        sprintf(out_buf, "[%s] mkdir failed error [%d]\n", __FUNCTION__, errno);
-        WR_2_STDOUT;
-        exit(1);
+        exit(errno);
       }
     } else {
-      dedupe_fs_releasedir(file_chunk_path, &fi);
+      internal_releasedir(file_chunk_path, &fi);
     }
 
     strcat(file_chunk_path, "/");
     strncat(file_chunk_path, sha1+2, 4);
 
-    res = dedupe_fs_opendir(file_chunk_path, &fi);
+    res = internal_opendir(file_chunk_path, &fi);
     if(-ENOENT == res) {
-      res = dedupe_fs_mkdir(file_chunk_path, 0755);
+      res = internal_mkdir(file_chunk_path, 0755);
       if(res < 0) {
-        sprintf(out_buf, "[%s] mkdir failed error [%d]\n", __FUNCTION__, errno);
-        WR_2_STDOUT;
-        exit(1);
+        exit(errno);
       }
     } else {
-      dedupe_fs_releasedir(file_chunk_path, &fi);
+      internal_releasedir(file_chunk_path, &fi);
     }
 
     strcat(file_chunk_path, "/");
     strncat(file_chunk_path, sha1+6, 8);
 
-    res = dedupe_fs_opendir(file_chunk_path, &fi);
+    res = internal_opendir(file_chunk_path, &fi);
     if(-ENOENT == res) {
-      res = dedupe_fs_mkdir(file_chunk_path, 0755);
+      res = internal_mkdir(file_chunk_path, 0755);
       if(res < 0) {
-        sprintf(out_buf, "[%s] mkdir failed error [%d]\n", __FUNCTION__, errno);
-        WR_2_STDOUT;
-        exit(1);
+        exit(errno);
       }
     } else {
-      dedupe_fs_releasedir(file_chunk_path, &fi);
+      internal_releasedir(file_chunk_path, &fi);
     }
 
     strcat(file_chunk_path, "/");
     strncat(file_chunk_path, sha1+14, 26);
 
-    res = dedupe_fs_opendir(file_chunk_path, &fi);
+    res = internal_opendir(file_chunk_path, &fi);
     if(-ENOENT == res) {
-      res = dedupe_fs_mkdir(file_chunk_path, 0755);
+      res = internal_mkdir(file_chunk_path, 0755);
       if(res < 0) {
-        sprintf(out_buf, "[%s] mkdir failed error [%d]\n", __FUNCTION__, errno);
-        WR_2_STDOUT;
-        exit(1);
+        exit(errno);
       }
     } else {
-      dedupe_fs_releasedir(file_chunk_path, &fi);
+      internal_releasedir(file_chunk_path, &fi);
     }
 
     // create the chunk file 
     strcat(file_chunk_path, "/");
     strcat(file_chunk_path, sha1);
 
-    res = dedupe_fs_create(file_chunk_path, 0755, &fi);
+    res = internal_create(file_chunk_path, 0755, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] creat failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
-    res = dedupe_fs_write(file_chunk_path, filechunk, len, 0, &fi);
+    res = internal_write(file_chunk_path, filechunk, len, 0, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] write failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
-    res = dedupe_fs_release(file_chunk_path, &fi);
+    res = internal_release(file_chunk_path, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] release failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
     // create the nlinks file
@@ -190,28 +175,22 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
     strcat(nlinks_path, "/");
     strcat(nlinks_path, nlinks);
 
-    res = dedupe_fs_create(nlinks_path, 0755, &fi);
+    res = internal_create(nlinks_path, 0755, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] creat failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
     // Setup the number of links to 1
     filechunk[0] = '1';
     filechunk[1] = '\0';
-    res = dedupe_fs_write(nlinks_path, filechunk, 1, 0, &fi);
+    res = internal_write(nlinks_path, filechunk, 1, 0, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] write failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
-    res = dedupe_fs_release(nlinks_path, &fi);
+    res = internal_release(nlinks_path, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] release failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
   } else {
@@ -221,18 +200,14 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
     strcat(nlinks_path, nlinks);
 
     nlinks_fi.flags = O_RDWR;
-    res = dedupe_fs_open(nlinks_path, &nlinks_fi);
+    res = internal_open(nlinks_path, &nlinks_fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] open failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
-    res = dedupe_fs_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
+    res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] read failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
     sscanf(nlinks_cnt, "%d", &nlinks_num);
@@ -240,25 +215,19 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
     sprintf(nlinks_cnt, "%d", nlinks_num);
 
-    res = dedupe_fs_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
+    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] write failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
-    res = dedupe_fs_release(nlinks_path, &nlinks_fi);
+    res = internal_release(nlinks_path, &nlinks_fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] release failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
 
-    res = dedupe_fs_releasedir(dir_srchstr, &fi);
+    res = internal_releasedir(dir_srchstr, &fi);
     if(res < 0) {
-      sprintf(out_buf, "[%s] releasedir failed error [%d]\n", __FUNCTION__, errno);
-      WR_2_STDOUT;
-      exit(1);
+      exit(errno);
     }
   }
 }
@@ -282,12 +251,9 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   nbytes = MAXCHUNK;
   write_off = f_args->offset;
 
-  printf("filestore_path [%s]\n", filestore_path);
   fi.flags = O_RDONLY;
-  res = dedupe_fs_open(filestore_path, &fi);
+  res = internal_open(filestore_path, &fi);
   if(res < 0) {
-    sprintf(out_buf, "[%s] open failed error [%d]\n", __FUNCTION__, errno);
-    WR_2_STDOUT;
     ABORT;
   }
 
@@ -298,11 +264,9 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     st_off = read_off - old_data_len;
 
     if(read_off < stbuf->st_size) {
-      res = dedupe_fs_read(filestore_path, filedata, nbytes, read_off, &fi);
+      res = internal_read(filestore_path, filedata, nbytes, read_off, &fi);
       if(res < 0) {
-        sprintf(out_buf, "[%s] read failed error [%d]\n", __FUNCTION__, errno);
-        WR_2_STDOUT;
-        abort();
+        ABORT;
       }
     } else {
       res = 0;
@@ -328,8 +292,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       memset(meta_data, 0, OFF_HASH_LEN);
       snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
-      dedupe_fs_write(f_args->path, meta_data, strlen(meta_data), write_off, f_args->fi);
-      write_off += strlen(meta_data);
+      internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
+      write_off += OFF_HASH_LEN;
       old_data_len = 0;
 
       free(sha1_out);
@@ -341,6 +305,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     while(TRUE) {
 
       rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk,rkhash);
+      printf("rkhash:%llu\n", rkhash);
 
       if(TRUE == pattern_match(rkhash)) {
 
@@ -352,9 +317,9 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         memset(meta_data, 0, OFF_HASH_LEN);
         snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
-        dedupe_fs_write(f_args->path, meta_data, strlen(meta_data), write_off, f_args->fi);
+        internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
      
-        write_off += strlen(meta_data);
+        write_off += OFF_HASH_LEN;
      
         free(sha1_out);
         sha1_out = NULL;
@@ -383,8 +348,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         memset(meta_data, 0, OFF_HASH_LEN);
         snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
-        dedupe_fs_write(f_args->path, meta_data, strlen(meta_data), write_off, f_args->fi);
-        write_off += strlen(meta_data);
+        internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
+        write_off += OFF_HASH_LEN;
         old_data_len = 0;
 
         free(sha1_out);
@@ -404,10 +369,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     }
   }
 
-  res = dedupe_fs_release(filestore_path, &fi);
+  res = internal_release(filestore_path, &fi);
   if(res < 0) {
-    sprintf(out_buf, "[%s] release failed on [%s] errno [%d]\n", __FUNCTION__,filestore_path, errno);
-    WR_2_STDOUT;
     ABORT;
   }
 }
