@@ -39,12 +39,14 @@ int internal_read(const char *path, char *buf, size_t size, off_t offset, struct
   WR_2_STDOUT;
 #endif
 
+  dedupe_fs_lock(path, fi->fh);
   res = pread(fi->fh, buf, size, offset);
   if(FAILED == res) {
     sprintf(out_buf, "[%s] pread failed", __FUNCTION__);
     perror(out_buf);
     res = -errno;
   }
+  dedupe_fs_unlock(path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -264,9 +266,11 @@ int internal_write(const char *path, char *buf, size_t size, off_t offset, struc
   WR_2_STDOUT;
 #endif
 
+  dedupe_fs_lock(path, fi->fh);
   res = pwrite(fi->fh, buf, size, offset);
   if(FAILED == res)
     res = -errno;
+  dedupe_fs_unlock(path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

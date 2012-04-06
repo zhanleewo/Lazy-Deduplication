@@ -41,6 +41,30 @@ void dedupe_fs_metadata_path(char ab_path[MAX_PATH_LEN], const char *path) {
   return;
 }
 
+int dedupe_fs_lock(const char *path, uint64_t fd) {
+  char out_buf[BUF_LEN] = {0};
+
+  if(FAILED == flock(fd, LOCK_EX)) {
+    sprintf(out_buf, "[%s] flock lock failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+    return -errno;
+  }
+
+  return SUCCESS;
+}
+
+int dedupe_fs_unlock(const char *path, uint64_t fd) {
+  char out_buf[BUF_LEN] = {0};
+
+  if(FAILED == flock(fd, LOCK_UN)) {
+    sprintf(out_buf, "[%s] flock unlock failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+    return -errno;
+  }
+
+  return SUCCESS;
+}
+
 static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
   int res = 0;
@@ -121,6 +145,8 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
               &stbuf->st_mtime, 
               &stbuf->st_ctime);
         }
+
+        printf("size [%d]\n", stbuf->st_size);
         internal_release(meta_path, &fi);
       }
     }
@@ -609,12 +635,14 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   dedupe_fs_filestore_path(ab_path, path);
   res = lstat(ab_path, &stbuf);
   if(SUCCESS == res) {
+    dedupe_fs_lock(ab_path, fi->fh);
     res = pread(fi->fh, buf, size, offset);
     if(FAILED == res) {
       sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__, ab_path);
       perror(out_buf);
       res = -errno;
     }
+    dedupe_fs_unlock(ab_path, fi->fh);
     return res;
   }
 
@@ -627,10 +655,13 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     return res;
   }
 
+  dedupe_fs_lock(meta_path, fi->fh);
   res = pread(fi->fh, stat_buf, STAT_LEN, 0);
   if(FAILED == res) {
     sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__, meta_path);
     perror(out_buf);
+
+    dedupe_fs_unlock(meta_path, fi->fh);
     exit(1);
   }
 
@@ -655,7 +686,10 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
   hash_off = STAT_LEN;
   read = 0;
-  toread = stbuf.st_size;
+  toread = size;
+
+  if(toread > stbuf.st_size)
+    toread = stbuf.st_size;
 
   while(meta_f_readcnt < meta_stbuf.st_size) {
 
@@ -665,10 +699,13 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
       sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__, meta_path);
       perror(out_buf);
       res = -errno;
+      dedupe_fs_unlock(meta_path, fi->fh);
       return res;
     } else if (0 == res) {
       sprintf(out_buf, "[%s] EOF reached on [%s]", __FUNCTION__, meta_path);
       perror(out_buf);
+      res = -errno;
+      dedupe_fs_unlock(meta_path, fi->fh);
       return res;
     }
 
@@ -691,7 +728,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
       r_cnt = internal_read(srchstr, buf+read, toread, req_off-st_off, &hash_fi);
       if(r_cnt <= 0) {
-        return r_cnt;
+        return read;
       }
 
       res = internal_release(srchstr, &hash_fi);
@@ -711,12 +748,14 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
       break;
   }
 
+  dedupe_fs_unlock(meta_path, fi->fh);
+
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
 
-  return size;
+  return read;
 }
 
 static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
@@ -729,12 +768,16 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
   WR_2_STDOUT;
 #endif
 
+  dedupe_fs_lock(path, fi->fh);
+
   res = pwrite(fi->fh, buf, size, offset);
   if(FAILED == res) {
     sprintf(out_buf, "[%s] pwrite failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
     res = -errno;
   }
+
+  dedupe_fs_unlock(path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
