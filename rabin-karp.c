@@ -234,7 +234,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
-  unsigned long long int res = 0, readcnt = 0, pos = 0;
+  unsigned long long int res = 0, pos = 0;
   unsigned long long int nbytes = 0, old_data_len = 0;
   unsigned long long int newchunk = 0, rkhash = 0;
 
@@ -269,10 +269,9 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         ABORT;
       }
     } else {
-      res = 0;
+	res = 0;
     }
 
-    readcnt += res;
     read_off += res;
 
     stblk = endblk = 0;
@@ -290,7 +289,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
 
       memset(meta_data, 0, OFF_HASH_LEN);
-      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
+      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", read_off, st_off+endblk, sha1_out);
 
       internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
       write_off += OFF_HASH_LEN;
@@ -334,11 +333,6 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
       } else if(((endblk-stblk+1) == MAXCHUNK) ||
           (st_off+endblk+1 == stbuf->st_size)) {
-
-        /*if((readcnt == stbuf->st_size) &&
-            (endblk < old_data_len+res)) {
-          endblk = old_data_len + res;
-        }*/
 
         copy_substring(filedata, filechunk, stblk, endblk);
         sha1_out = sha1(filechunk, endblk-stblk+1);
