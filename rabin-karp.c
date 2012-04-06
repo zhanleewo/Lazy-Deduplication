@@ -234,8 +234,8 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
-  unsigned long long int res = 0, pos = 0;
-  unsigned long long int nbytes = 0, old_data_len = 0;
+  long long int res = 0;
+  unsigned long long int nbytes = 0, old_data_len = 0, pos=0;
   unsigned long long int newchunk = 0, rkhash = 0;
 
   off_t stblk = 0, endblk = 0;
