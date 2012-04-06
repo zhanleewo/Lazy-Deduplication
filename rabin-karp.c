@@ -262,6 +262,12 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     memcpy(filedata, temp_data, old_data_len);
     nbytes = MAXCHUNK - old_data_len;
     st_off = read_off - old_data_len;
+    
+    //printf("The st off set is %d\n",st_off);
+    //printf("The old data len is %llu\n",old_data_len);
+    //printf("The read off set value before reading is %llu\n",read_off);
+    //printf("The res value before input is %lld\n",res);
+	
 
     if(read_off < stbuf->st_size) {
       res = internal_read(filestore_path, filedata, nbytes, read_off, &fi);
@@ -272,7 +278,10 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 	res = 0;
     }
 
-    read_off += res;
+    read_off +=res;
+    //printf("\n\nThe res value after input is %lld\n",res);
+    
+    //printf("The read off set value after reading is %llu\n",read_off);
 
     stblk = endblk = 0;
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
@@ -288,8 +297,12 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
       create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
 
+     //printf("\n\nThe old data len value inside last function is %llu\n",old_data_len);
+     //printf("The res value insdie last function is %lld\n",res);
+     //printf("The st off value inside the last function is %d\n",st_off);	
+
       memset(meta_data, 0, OFF_HASH_LEN);
-      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", read_off, st_off+endblk, sha1_out);
+      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
       internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
       write_off += OFF_HASH_LEN;
@@ -324,7 +337,13 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         sha1_out = NULL;
      
         old_data_len = MAXCHUNK - endblk - 1;
-        if(old_data_len > 0) {
+	if(read_off == stbuf->st_size)
+	{
+		old_data_len = read_off - st_off-endblk-1;
+	}
+        //printf("\nold data len after pattern match is done is %lld\n",old_data_len);
+	//printf("\nThe end block value is %llu\n",endblk);
+	if(old_data_len > 0) {
           memset(temp_data, 0, MAXCHUNK);
           memcpy(temp_data, filedata + endblk + 1, old_data_len);
         }
