@@ -262,7 +262,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     memcpy(filedata, temp_data, old_data_len);
     nbytes = MAXCHUNK - old_data_len;
     st_off += endblk + 1;
-
+    
     if(read_off < stbuf->st_size) {
       res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi);
       if(res < 0) {
@@ -272,7 +272,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 	res = 0;
     }
 
-    read_off += res;
+    read_off +=res;
 
     stblk = endblk = 0;
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
