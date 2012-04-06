@@ -137,13 +137,13 @@ int internal_open(const char *path, struct fuse_file_info *fi) {
 
   fi->fh = fd;
 
-  if(FAILED == flock(fi->fh, LOCK_EX)) {
+  /*if(FAILED == flock(fi->fh, LOCK_EX)) {
     sprintf(out_buf, "[%s] LOCK on [%s] failed error [%d]\n",
         __FUNCTION__, path, errno);
     WR_2_STDOUT;
   }
 
-  fi->lock_owner = gettid();
+  fi->lock_owner = gettid();*/
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -285,14 +285,14 @@ int internal_release(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  if(gettid() == fi->lock_owner) {
+  /*if(gettid() == fi->lock_owner) {
     fi->lock_owner = 0;
     if(FAILED == flock(fi->fh, LOCK_UN)) {
       sprintf(out_buf, "[%s] flock UNLOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
       WR_2_STDOUT;
       return -errno;
     }
-  }
+  }*/
 
   res = close(fi->fh);
 

@@ -239,7 +239,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   unsigned long long int newchunk = 0, rkhash = 0;
 
   off_t stblk = 0, endblk = 0;
-  off_t read_off = 0, write_off = 0, st_off = 0;
+  off_t read_off = 0, write_off = 0, st_off = -1;
 
   char out_buf[BUF_LEN], *sha1_out = NULL;
   char filedata[MAXCHUNK + 1] = {0};
@@ -261,10 +261,10 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
     memcpy(filedata, temp_data, old_data_len);
     nbytes = MAXCHUNK - old_data_len;
-    st_off = read_off - old_data_len;
+    st_off += endblk + 1;
 
     if(read_off < stbuf->st_size) {
-      res = internal_read(filestore_path, filedata, nbytes, read_off, &fi);
+      res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi);
       if(res < 0) {
         ABORT;
       }
@@ -277,8 +277,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     stblk = endblk = 0;
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
     endblk = SUBSTRING_LEN - 1 + pos;
-    newchunk=0;
-    rkhash=0;
+    newchunk = 0;
+    rkhash = 0;
 
     if((old_data_len + res - 1) <= endblk) {
       endblk = old_data_len + res - 1;
@@ -289,7 +289,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       create_chunkfile(filechunk, sha1_out, endblk-stblk+1);
 
       memset(meta_data, 0, OFF_HASH_LEN);
-      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", read_off, st_off+endblk, sha1_out);
+      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
       internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
       write_off += OFF_HASH_LEN;
@@ -304,7 +304,6 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     while(TRUE) {
 
       rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk,rkhash);
-      printf("rkhash:%llu\n", rkhash);
 
       if(TRUE == pattern_match(rkhash)) {
 
@@ -323,7 +322,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         free(sha1_out);
         sha1_out = NULL;
      
-        old_data_len = MAXCHUNK - endblk - 1;
+        old_data_len = (old_data_len + res) - (endblk + 1);
         if(old_data_len > 0) {
           memset(temp_data, 0, MAXCHUNK);
           memcpy(temp_data, filedata + endblk + 1, old_data_len);
