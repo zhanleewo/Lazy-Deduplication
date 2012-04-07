@@ -160,7 +160,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
       exit(errno);
     }
 
-    res = internal_write(file_chunk_path, filechunk, len, 0, &fi);
+    res = internal_write(file_chunk_path, filechunk, len, (off_t)0, &fi);
     if(res < 0) {
       exit(errno);
     }
@@ -183,7 +183,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
     // Setup the number of links to 1
     filechunk[0] = '1';
     filechunk[1] = '\0';
-    res = internal_write(nlinks_path, filechunk, 1, 0, &fi);
+    res = internal_write(nlinks_path, filechunk, 1, (off_t)0, &fi);
     if(res < 0) {
       exit(errno);
     }
@@ -205,7 +205,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
       exit(errno);
     }
 
-    res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
+    res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi);
     if(res < 0) {
       exit(errno);
     }
@@ -215,7 +215,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
     sprintf(nlinks_cnt, "%d", nlinks_num);
 
-    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, 0, &nlinks_fi);
+    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi);
     if(res < 0) {
       exit(errno);
     }

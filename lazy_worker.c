@@ -19,29 +19,6 @@ extern int internal_release(const char *, struct fuse_file_info *);
 
 extern int compute_rabin_karp(const char *, file_args *, struct stat *);
 
-int create_stat_buf(struct stat *stbuf, char *stat_buf, size_t *len) {
-
-  sprintf(stat_buf, 
-    "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu\n", 
-    stbuf->st_dev, 
-    stbuf->st_ino, 
-    stbuf->st_mode,
-    stbuf->st_nlink, 
-    stbuf->st_uid, 
-    stbuf->st_gid, 
-    stbuf->st_rdev, 
-    stbuf->st_size, 
-    stbuf->st_blksize, 
-    stbuf->st_blocks, 
-    stbuf->st_atime, 
-    stbuf->st_mtime, 
-    stbuf->st_ctime);
-
-  *len = strlen(stat_buf);
-
-  return 0;
-}
-
 void process_initial_file_store(char *path) {
 
   int res = 0;
@@ -125,10 +102,10 @@ void process_initial_file_store(char *path) {
 
       memset(&stat_buf, 0, STAT_LEN);
 
-      create_stat_buf(&stbuf, stat_buf, &stat_len);
+      stbuf2char(stat_buf, &stbuf);
       stat_buf[STAT_LEN-1] = '\n';
 
-      res = internal_write(meta_path, (char *)stat_buf, STAT_LEN, 0, &fi);
+      res = internal_write(meta_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi);
       if(res < 0) {
         ABORT;
       }
@@ -141,7 +118,7 @@ void process_initial_file_store(char *path) {
 
         res = compute_rabin_karp(ab_path, &f_args, &stbuf);
         if(res < 0) {
-          sprintf(out_buf, "[%s] unable to fingerprint using rabin-karp on [%s]\n", __FUNCTION__, new_path);
+          sprintf(out_buf, "[%s] Rabin-Karp finger-printing failed on [%s]\n", __FUNCTION__, new_path);
           WR_2_STDOUT;
           //TODO decide if return or abort
           ABORT;

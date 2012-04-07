@@ -65,6 +65,46 @@ int dedupe_fs_unlock(const char *path, uint64_t fd) {
   return SUCCESS;
 }
 
+void char2stbuf(const char *stat_buf, struct stat *stbuf) {
+  memset(stbuf, 0, sizeof(struct stat));
+
+  sscanf(stat_buf, 
+      "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu\n",
+      &stbuf->st_dev, 
+      &stbuf->st_ino, 
+      &stbuf->st_mode,
+      &stbuf->st_nlink, 
+      &stbuf->st_uid, 
+      &stbuf->st_gid, 
+      &stbuf->st_rdev, 
+      &stbuf->st_size, 
+      &stbuf->st_blksize, 
+      &stbuf->st_blocks, 
+      &stbuf->st_atime, 
+      &stbuf->st_mtime, 
+      &stbuf->st_ctime);
+}
+
+void stbuf2char(char *stat_buf, struct stat *stbuf) {
+  memset(stat_buf, 0, STAT_LEN);
+
+  sprintf(stat_buf, 
+    "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu\n", 
+    stbuf->st_dev, 
+    stbuf->st_ino, 
+    stbuf->st_mode,
+    stbuf->st_nlink, 
+    stbuf->st_uid, 
+    stbuf->st_gid, 
+    stbuf->st_rdev, 
+    stbuf->st_size, 
+    stbuf->st_blksize, 
+    stbuf->st_blocks, 
+    stbuf->st_atime, 
+    stbuf->st_mtime, 
+    stbuf->st_ctime);
+}
+
 static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
   int res = 0;
@@ -125,28 +165,10 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
         if(res < 0) {
           // res contains the errno to return to libfuse
         } else {
-
           // process stat_buf to form the original data
-          memset(stbuf, 0, sizeof(struct stat));
-
-          sscanf(stat_buf, 
-              "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu\n",
-              &stbuf->st_dev, 
-              &stbuf->st_ino, 
-              &stbuf->st_mode,
-              &stbuf->st_nlink, 
-              &stbuf->st_uid, 
-              &stbuf->st_gid, 
-              &stbuf->st_rdev, 
-              &stbuf->st_size, 
-              &stbuf->st_blksize, 
-              &stbuf->st_blocks, 
-              &stbuf->st_atime, 
-              &stbuf->st_mtime, 
-              &stbuf->st_ctime);
+          char2stbuf(stat_buf, stbuf);
         }
 
-        printf("size [%d]\n", stbuf->st_size);
         internal_release(meta_path, &fi);
       }
     }
@@ -375,23 +397,52 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char stat_buf[STAT_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
 
+  struct stat stbuf;
+  struct fuse_file_info fi;
+
 #ifdef DEBUG
-  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
 
   res = chmod(ab_path, mode);
+  if(SUCCESS == res) {
+    return res;
+  }
+
+  dedupe_fs_metadata_path(meta_path, path);
+
+  fi.flags = O_RDWR;
+  res = internal_open(meta_path, &fi);
   if(FAILED == res) {
-    dedupe_fs_metadata_path(meta_path, path);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] chmod failed on [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
-    }
+    return res;
+  }
+
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  if(res <= 0) {
+    return res;
+  }
+
+  char2stbuf(stat_buf, &stbuf);
+
+  // TODO need to add checks for verify the access rights
+  stbuf.st_mode = mode;
+
+  stbuf2char(stat_buf, &stbuf);
+
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  if(res < 0) {
+    return res;
+  }
+
+  res = internal_release(meta_path, &fi);
+  if(FAILED == res) {
+    return res;
   }
 
 #ifdef DEBUG
@@ -635,14 +686,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   dedupe_fs_filestore_path(ab_path, path);
   res = lstat(ab_path, &stbuf);
   if(SUCCESS == res) {
-    dedupe_fs_lock(ab_path, fi->fh);
-    res = pread(fi->fh, buf, size, offset);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__, ab_path);
-      perror(out_buf);
-      res = -errno;
-    }
-    dedupe_fs_unlock(ab_path, fi->fh);
+    res = internal_read(ab_path, buf, size, offset, fi);
     return res;
   }
 
@@ -655,38 +699,20 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     return res;
   }
 
-  dedupe_fs_lock(meta_path, fi->fh);
-  res = pread(fi->fh, stat_buf, STAT_LEN, 0);
-  if(FAILED == res) {
-    sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__, meta_path);
-    perror(out_buf);
-
-    dedupe_fs_unlock(meta_path, fi->fh);
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, fi);
+  if(res <= 0) {
     exit(1);
   }
 
   meta_f_readcnt += STAT_LEN;
 
-  memset(&stbuf, 0, sizeof(struct stat));
-  sscanf(stat_buf, 
-      "%llu:%llu:%u:%u:%u:%u:%llu:%lld:%lu:%lld:%lu:%lu:%lu\n",
-      &stbuf.st_dev, 
-      &stbuf.st_ino, 
-      &stbuf.st_mode,
-      &stbuf.st_nlink, 
-      &stbuf.st_uid, 
-      &stbuf.st_gid, 
-      &stbuf.st_rdev, 
-      &stbuf.st_size, 
-      &stbuf.st_blksize, 
-      &stbuf.st_blocks, 
-      &stbuf.st_atime, 
-      &stbuf.st_mtime, 
-      &stbuf.st_ctime);
+  char2stbuf(stat_buf, &stbuf);
 
   hash_off = STAT_LEN;
   read = 0;
   toread = size;
+
+  printf("size [%d]\n", stbuf.st_size);
 
   if(toread > stbuf.st_size)
     toread = stbuf.st_size;
@@ -694,18 +720,8 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   while(meta_f_readcnt < meta_stbuf.st_size) {
 
     memset(hash_line, 0, OFF_HASH_LEN);
-    res = pread(fi->fh, hash_line, OFF_HASH_LEN, hash_off);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
-      dedupe_fs_unlock(meta_path, fi->fh);
-      return res;
-    } else if (0 == res) {
-      sprintf(out_buf, "[%s] EOF reached on [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
-      dedupe_fs_unlock(meta_path, fi->fh);
+    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, fi);
+    if(res <= 0) {
       return res;
     }
 
@@ -721,6 +737,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
       strcat(srchstr, "/");
       strcat(srchstr, sha1);
 
+      hash_fi.flags = O_RDONLY;
       res = internal_open(srchstr, &hash_fi);
       if(res < 0) {
         return res;
@@ -747,8 +764,6 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     if(toread <= 0)
       break;
   }
-
-  dedupe_fs_unlock(meta_path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
