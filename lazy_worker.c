@@ -161,6 +161,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(1);
+    sleep(10);
   }
 }

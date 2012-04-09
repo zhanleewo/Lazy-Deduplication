@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <sys/resource.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 

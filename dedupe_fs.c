@@ -5,6 +5,7 @@
 
 #include "dedupe_fs.h"
 #include "rabin-karp.h"
+#include "sha1.h"
 
 char *dedupe_file_store = "/tmp/dedupe_file_store";
 char *dedupe_metadata = "/tmp/dedupe_metadata";
@@ -15,6 +16,7 @@ dedupe_globals globals;
 
 extern void *lazy_worker_thread(void *);
 extern void create_dir_search_str(char *, char *);
+extern char *sha1(char *, int);
 
 static void usage() {
   char out_buf[BUF_LEN];
@@ -419,7 +421,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
   fi.flags = O_RDWR;
   res = internal_open(meta_path, &fi);
-  if(FAILED == res) {
+  if(res < 0) {
     return res;
   }
 
@@ -457,9 +459,13 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 
   int res = 0;
 
+  char stat_buf[STAT_LEN] = {0};
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
+
+  struct stat stbuf;
+  struct fuse_file_info fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -469,13 +475,37 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
   dedupe_fs_filestore_path(ab_path, path);
 
   res = chown(ab_path, uid, gid);
+  if(SUCCESS == res) {
+    return res;
+  }
+
+  dedupe_fs_metadata_path(meta_path, path);
+  fi.flags = O_RDWR;
+  res = internal_open(meta_path, &fi);
   if(FAILED == res) {
-    dedupe_fs_metadata_path(meta_path, path);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] chown failed on [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
-    }
+    return res;
+  }
+
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  if(res <= 0) {
+    return res;
+  }
+
+  char2stbuf(stat_buf, &stbuf);
+  // TODO need to add checks for verify the access rights
+  stbuf.st_uid = uid;
+  stbuf.st_gid = gid;
+
+  stbuf2char(stat_buf, &stbuf);
+
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  if(res < 0) {
+    return res;
+  }
+
+  res = internal_release(meta_path, &fi);
+  if(FAILED == res) {
+    return res;
   }
 
 #ifdef DEBUG
@@ -529,12 +559,11 @@ static int dedupe_fs_rmdir(const char *path) {
   dedupe_fs_filestore_path(ab_path, path);
 
   res = rmdir(ab_path);
-  if(FAILED == res) {
-    // TODO need to handle file unlink part of the code as well also few other checks
-    sprintf(out_buf, "[%s] rmdir failed on [%s]", __FUNCTION__, ab_path);
-    perror(out_buf);
-    res = -errno;
+  if(SUCCESS == res) {
+    return res;
   }
+
+  // TODO need to handle file unlink part of the code as well also few other checks
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -659,6 +688,8 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
   int res = 0, read = 0;
 
+  time_t tm;
+
   size_t meta_f_readcnt = 0;
   size_t toread = 0, r_cnt = 0;
 
@@ -666,9 +697,10 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   off_t st_off = 0, end_off = 0;
 
   struct stat stbuf, meta_stbuf;
-  struct fuse_file_info hash_fi;
+  struct fuse_file_info hash_fi, wr_fi;
 
   char *sha1 = NULL, *saveptr = NULL;
+  char *st = NULL, *end = NULL;
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
@@ -712,8 +744,6 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   read = 0;
   toread = size;
 
-  printf("size [%d]\n", stbuf.st_size);
-
   if(toread > stbuf.st_size)
     toread = stbuf.st_size;
 
@@ -725,10 +755,13 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
       return res;
     }
 
-    st_off = (off_t)atoll(strtok_r(hash_line, ":", &saveptr));
-    end_off = (off_t)atoll(strtok_r(NULL, ":", &saveptr));
-    sha1 = strtok_r(NULL, ":", &saveptr);
+    st = strtok_r(hash_line, ":", &saveptr);
+    st_off = (off_t)atoll(st);
 
+    end = strtok_r(NULL, ":", &saveptr);
+    end_off = (off_t)atoll(end);
+
+    sha1 = strtok_r(NULL, ":", &saveptr);
     sha1[strlen(sha1)-1] = '\0';
 
     if(req_off >= st_off && req_off <= end_off) {
@@ -764,6 +797,27 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     if(toread <= 0)
       break;
   }
+
+  // update the st_atime modified during file read
+  time(&tm);
+  stbuf.st_atime = tm;
+
+  wr_fi.flags = O_RDWR;
+  res = internal_open(meta_path, &wr_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  memset(stat_buf, 0, STAT_LEN);
+  stbuf2char(stat_buf, &stbuf);
+
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &wr_fi);
+  if(res < 0) {
+    internal_release(meta_path, &wr_fi);
+    return res;
+  }
+
+  internal_release(meta_path, &wr_fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -847,26 +901,173 @@ static int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
 #endif
 
   return SUCCESS;
-
 }
 
 static int dedupe_fs_truncate(const char *path, off_t newsize) {
   int res = 0;
-  char out_buf[BUF_LEN];
-  char ab_path[MAX_PATH_LEN];
+
+  time_t tm;
+
+  off_t cur_off = 0, hash_off = 0, rem_size = 0;
+  off_t st_off = 0, end_off = 0, num_hash_lines = 0;
+
+  char *hash = NULL, *sha1_out = NULL, *saveptr = NULL;
+
+  char stat_buf[STAT_LEN] = {0};
+  char out_buf[BUF_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
+  char hash_line[OFF_HASH_LEN] = {0};
+  char filechunk[MAXCHUNK+1] = {0};
+  char meta_data[OFF_HASH_LEN] = {0};
+
+  struct stat stbuf = {0};
+  struct rlimit rlim = {0};
+  struct fuse_file_info fi = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
 
+  getrlimit(RLIMIT_FSIZE, &rlim);
+
+  if(newsize < 0 || newsize > rlim.rlim_cur) {
+    res = -EINVAL;
+    return res;
+  }
+
   dedupe_fs_filestore_path(ab_path, path);
 
   res = truncate(ab_path, newsize);
+  if(SUCCESS == res) {
+    return res;
+  }
+
+  dedupe_fs_metadata_path(meta_path, path);
+
+  fi.flags = O_RDWR;
+  res = internal_open(meta_path, &fi);
+  if(res < 0) {
+    return res;
+  }
+
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  if(res <= 0) {
+    internal_release(meta_path, &fi);
+    return res;
+  }
+
+  char2stbuf(stat_buf, &stbuf);
+
+  hash_off = STAT_LEN;
+
+  if(newsize == stbuf.st_size) {
+    internal_release(meta_path, &fi);
+    return SUCCESS;
+  } else if (newsize < stbuf.st_size) {
+
+    while(TRUE) {
+      res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi);
+      if(res <= 0) {
+        internal_release(meta_path, &fi);
+        return res;
+      }
+
+      st_off = (off_t)atoll(strtok_r(hash_line, ":", &saveptr));
+      end_off = (off_t)atoll(strtok_r(NULL, ":", &saveptr));
+      hash = strtok_r(NULL, ":", &saveptr);
+ 
+      hash[strlen(hash)-1] = '\0';
+
+      hash_off += OFF_HASH_LEN;
+
+      if((newsize-1) >= st_off && (newsize-1) <= end_off) {
+        break;
+      }
+    }
+
+    // TODO incorporate unlink for all the hashes
+    // Create new hash for the last block
+
+  } else {
+    // Find the last hashline in the metadata file
+    cur_off = stbuf.st_size - STAT_LEN;
+    num_hash_lines = cur_off / OFF_HASH_LEN;
+
+    hash_off = cur_off + (num_hash_lines -1) * OFF_HASH_LEN;
+
+    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi);
+    if(res <= 0) {
+      internal_release(meta_path, &fi);
+      return res;
+    }
+
+    st_off = (off_t)atoll(strtok_r(hash_line, ":", &saveptr));
+    end_off = (off_t)atoll(strtok_r(NULL, ":", &saveptr));
+
+    rem_size = newsize - (end_off + 1);
+
+    while(rem_size > MAXCHUNK) {
+
+      memset(filechunk, 0, MAXCHUNK);
+      sha1_out = sha1(filechunk, MAXCHUNK);
+      create_chunkfile(filechunk, sha1_out, MAXCHUNK);
+
+      memset(meta_data, 0, OFF_HASH_LEN);
+      st_off = end_off + 1;
+      end_off += MAXCHUNK;
+      hash_off += OFF_HASH_LEN;
+
+      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, end_off, sha1_out);
+      res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi);
+      if(res < 0) {
+        internal_release(meta_path, &fi);
+        return res;
+      }
+
+      rem_size -= MAXCHUNK;
+      free(sha1_out);
+      sha1_out = NULL;
+    }
+
+    memset(filechunk, 0, rem_size);
+    sha1_out = sha1(filechunk, rem_size);
+    create_chunkfile(filechunk, sha1_out, rem_size);
+
+    memset(meta_data, 0, OFF_HASH_LEN);
+    st_off = end_off + 1;
+    end_off += rem_size;
+    hash_off += OFF_HASH_LEN;
+
+    snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, end_off, sha1_out);
+    res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi);
+    if(res < 0) {
+      internal_release(meta_path, &fi);
+      return res;
+    }
+
+    free(sha1_out);
+    sha1_out = NULL;
+  }
+
+  // update st_mtime and st_ctime during truncate
+  time(&tm);
+  stbuf.st_size = newsize;
+  stbuf.st_mtime = tm;
+  stbuf.st_ctime = tm;
+
+  stbuf2char(stat_buf, &stbuf);
+
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  if(res < 0) {
+    internal_release(meta_path, &fi);
+    return res;
+  }
+
+  res = internal_release(meta_path, &fi);
   if(FAILED == res) {
-    sprintf(out_buf, "[%s] truncate failed on [%s]", __FUNCTION__, ab_path);
-    perror(out_buf);
-    res = -errno;
+    return res;
   }
 
 #ifdef DEBUG
@@ -874,7 +1075,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   WR_2_STDOUT;
 #endif
 
-  return res;
+  return SUCCESS;
 }
 
 static int dedupe_fs_utime(const char *path, struct utimbuf *ubuf) {
