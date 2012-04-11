@@ -248,7 +248,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   char meta_data[OFF_HASH_LEN] = {0};
   char bitmask_file_path[MAX_PATH_LEN] = {0};
 
-  unsigned int *bitmask = NULL;
+  unsigned int *btmsk = NULL;
 
   struct fuse_file_info fi, bitmask_fi;
 
@@ -270,8 +270,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     return res;
   }
 
-  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
-  if(bitmask == MAP_FAILED) {
+  btmsk = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
+  if(btmsk == MAP_FAILED) {
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
     perror(out_buf);
     res = -errno;
@@ -385,7 +385,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     }
   }
 
-  res = munmap(bitmask, BITMASK_LEN);
+  res = munmap(btmsk, BITMASK_LEN);
   if(FAILED == res) {
     ABORT;
   }

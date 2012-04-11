@@ -12,7 +12,7 @@ char *dedupe_metadata = "/tmp/dedupe_metadata";
 char *dedupe_hashes = "/tmp/dedupe_hashes";
 char *nlinks = "nlinks.txt";
 
-unsigned int *bitmask = NULL;
+static unsigned int *bitmask = NULL;
 
 dedupe_globals globals;
 
@@ -695,7 +695,8 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
     return res;
   }
 
-  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
+  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, 
+      PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
   if(bitmask == MAP_FAILED) {
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
     perror(out_buf);
@@ -715,18 +716,19 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
 
 static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
-  int res = 0, read = 0;
+  int res = 0, read = 0, meta_file = 0;
 
   time_t tm;
 
   size_t meta_f_readcnt = 0;
-  size_t toread = 0, r_cnt = 0;
+  size_t hash_read = 0, toread = 0, r_cnt = 0;
 
   off_t hash_off = 0, req_off = offset;
   off_t st_off = 0, end_off = 0;
+  off_t block_num = 0, cur_off = 0;
 
   struct stat stbuf, meta_stbuf;
-  struct fuse_file_info hash_fi, wr_fi;
+  struct fuse_file_info meta_fi, hash_fi, wr_fi;
 
   char *sha1 = NULL, *saveptr = NULL;
   char *st = NULL, *end = NULL;
@@ -743,110 +745,151 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
-  
-  dedupe_fs_filestore_path(ab_path, path);
-  res = lstat(ab_path, &stbuf);
-  if(SUCCESS == res) {
-    res = internal_read(ab_path, buf, size, offset, fi);
-    return res;
-  }
 
   dedupe_fs_metadata_path(meta_path, path);
-  res = lstat(meta_path, &meta_stbuf);
-  if(FAILED == res) {
-    sprintf(out_buf, "[%s] lstat failed on [%s]", __FUNCTION__, meta_path);
-    perror(out_buf);
-    res = -errno;
-    return res;
-  }
 
-  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, fi);
-  if(res <= 0) {
-    exit(1);
-  }
+  res = internal_getattr(meta_path, &meta_stbuf);
 
-  meta_f_readcnt += STAT_LEN;
+  if(res >= 0) {
 
-  char2stbuf(stat_buf, &stbuf);
-
-  hash_off = STAT_LEN;
-  read = 0;
-  toread = size;
-
-  if(toread > stbuf.st_size)
-    toread = stbuf.st_size;
-
-  while(meta_f_readcnt < meta_stbuf.st_size) {
-
-    memset(hash_line, 0, OFF_HASH_LEN);
-    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, fi);
-    if(res <= 0) {
+    meta_file = 1;
+    res = internal_open(meta_path, &meta_fi);
+    if(res < 0) {
       return res;
     }
 
-    st = strtok_r(hash_line, ":", &saveptr);
-    st_off = (off_t)atoll(st);
+    res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi);
+    if(res <= 0) {
+      exit(1);
+    }
 
-    end = strtok_r(NULL, ":", &saveptr);
-    end_off = (off_t)atoll(end);
+    meta_f_readcnt += STAT_LEN;
+    char2stbuf(stat_buf, &stbuf);
+    hash_off = STAT_LEN;
 
-    sha1 = strtok_r(NULL, ":", &saveptr);
-    sha1[strlen(sha1)-1] = '\0';
+  } else {
 
-    if(req_off >= st_off && req_off <= end_off) {
+    dedupe_fs_filestore_path(ab_path, path);
+    res = internal_getattr(ab_path, &stbuf);
+    if(res < 0) {
+      return res;
+    }
+  }
 
-      create_dir_search_str(srchstr, sha1);
-      strcat(srchstr, "/");
-      strcat(srchstr, sha1);
+  if(size > stbuf.st_size) {
+    toread = stbuf.st_size;
+  } else {
+    toread = size;
+  }
 
-      hash_fi.flags = O_RDONLY;
-      res = internal_open(srchstr, &hash_fi);
-      if(res < 0) {
-        return res;
-      }
+  printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
 
-      r_cnt = internal_read(srchstr, buf+read, toread, req_off-st_off, &hash_fi);
-      if(r_cnt <= 0) {
-        return read;
-      }
+  // TODO Redesign lock
+  while(toread > 0) {
 
-      res = internal_release(srchstr, &hash_fi);
-      if(res < 0) {
-        return res;
-      }
+    block_num = req_off / MINCHUNK;
 
+    printf("toread [%ld] read [%d] req_off [%lld] block_num [%lld]\n", toread, read, req_off, block_num);
+    if(bitmask[block_num/32] & (1<<(block_num%32))) {
+ 
+      /* Requested block is present in the filestore */
+      printf("chunk inside filestore\n");
+      dedupe_fs_filestore_path(ab_path, path);
+      r_cnt = internal_read(ab_path, buf+read, MINCHUNK, req_off, fi);
+      if(r_cnt <= 0)
+        return r_cnt;
+ 
       toread -= r_cnt;
       read += r_cnt;
       req_off += r_cnt;
+ 
+    } else {
+ 
+      if(toread < MINCHUNK)
+        hash_read = toread;
+      else 
+        hash_read = MINCHUNK;
+ 
+      printf("chunk inside dedupe block\n");
+
+      while(meta_f_readcnt < meta_stbuf.st_size) {
+  
+        memset(hash_line, 0, OFF_HASH_LEN);
+        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, fi);
+        if(res <= 0) {
+          return res;
+        }
+  
+        st = strtok_r(hash_line, ":", &saveptr);
+        st_off = (off_t)atoll(st);
+  
+        end = strtok_r(NULL, ":", &saveptr);
+        end_off = (off_t)atoll(end);
+  
+        sha1 = strtok_r(NULL, ":", &saveptr);
+        sha1[strlen(sha1)-1] = '\0';
+  
+        if(req_off >= st_off && req_off <= end_off) {
+  
+          create_dir_search_str(srchstr, sha1);
+          strcat(srchstr, "/");
+          strcat(srchstr, sha1);
+  
+          hash_fi.flags = O_RDONLY;
+          res = internal_open(srchstr, &hash_fi);
+          if(res < 0) {
+            return res;
+          }
+  
+          r_cnt = internal_read(srchstr, buf+read, hash_read, req_off-st_off, &hash_fi);
+          if(r_cnt <= 0) {
+            return read;
+          }
+  
+          res = internal_release(srchstr, &hash_fi);
+          if(res < 0) {
+            return res;
+          }
+  
+          toread -= r_cnt;
+          read += r_cnt;
+          req_off += r_cnt;
+          hash_read -= r_cnt;
+        }
+  
+        meta_f_readcnt += OFF_HASH_LEN;
+        hash_off += OFF_HASH_LEN;
+  
+        if(hash_read <= 0)
+          break;
+      }
     }
-
-    meta_f_readcnt += OFF_HASH_LEN;
-    hash_off += OFF_HASH_LEN;
-
-    if(toread <= 0)
-      break;
   }
 
-  // update the st_atime modified during file read
-  time(&tm);
-  stbuf.st_atime = tm;
+  internal_release(meta_path, &meta_fi);
 
-  wr_fi.flags = O_RDWR;
-  res = internal_open(meta_path, &wr_fi);
-  if(res < 0) {
-    return res;
-  }
-
-  memset(stat_buf, 0, STAT_LEN);
-  stbuf2char(stat_buf, &stbuf);
-
-  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &wr_fi);
-  if(res < 0) {
+  if(meta_file == 1) {
+    // update the st_atime modified during file read
+    time(&tm);
+    stbuf.st_atime = tm;
+ 
+    wr_fi.flags = O_RDWR;
+    res = internal_open(meta_path, &wr_fi);
+    if(res < 0) {
+      return res;
+    }
+ 
+    memset(stat_buf, 0, STAT_LEN);
+    stbuf2char(stat_buf, &stbuf);
+ 
+    res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &wr_fi);
+    if(res < 0) {
+      internal_release(meta_path, &wr_fi);
+      return res;
+    }
+ 
     internal_release(meta_path, &wr_fi);
-    return res;
   }
-
-  internal_release(meta_path, &wr_fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -871,8 +914,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
   WR_2_STDOUT;
 #endif
 
-  /*printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
-  printf("\n<<<START_OF_DATA>>>\n");
+  printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
+  /*printf("\n<<<START_OF_DATA>>>\n");
   for(i = 0 ; i < size ; i++) {
     printf("%c", buf[i]);
   }

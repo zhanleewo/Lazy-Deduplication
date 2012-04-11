@@ -40,10 +40,14 @@ void process_initial_file_store(char *path) {
   char ab_f_path[MAX_PATH_LEN];
   char new_f_path[MAX_PATH_LEN];
   char meta_f_path[MAX_PATH_LEN];
+  char bitmask_file_path[MAX_PATH_LEN];
 
   char stat_buf[STAT_LEN];
 
+  unsigned int *btmsk = NULL;
+
   struct fuse_file_info fi, dir_fi;
+  struct fuse_file_info bitmask_fi;
   file_args f_args;
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -162,6 +166,36 @@ void process_initial_file_store(char *path) {
           if(res < 0) {
             ABORT;
           }
+
+        } else {
+
+          /* File already exists in the dedupe database */
+          /* i.e., file has been updated since last dedupe pass*/
+
+          fi.flags = O_RDWR;
+          res = internal_open(ab_path, &fi);
+          if(res < 0) {
+            ABORT;
+          }
+
+          btmsk = (unsigned int *) mmap(NULL, BITMASK_LEN, 
+                          PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
+          if(btmsk == MAP_FAILED) {
+            sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
+            perror(out_buf);
+            res = -errno;
+            return res;
+          }
+    
+          internal_release(bitmask_file_path, &bitmask_fi);
+
+          // TODO Read the file and recompute rabin-karp only for the
+          // blocks which has been updated
+
+          res = munmap(btmsk, BITMASK_LEN);
+          if(FAILED == res) {
+            ABORT;
+          }
         }
       }
     }
@@ -184,6 +218,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(40);
+    sleep(600);
   }
 }

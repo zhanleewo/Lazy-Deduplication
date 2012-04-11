@@ -28,7 +28,6 @@ int internal_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
   return SUCCESS;
 }
 
-
 int internal_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
   int res = 0;
@@ -71,7 +70,7 @@ int internal_opendir(const char *path, struct fuse_file_info *fi) {
   dp = opendir(path);
 
   if(NULL == dp) {
-    sprintf(out_buf, "[%s] opendir failed\n", __FUNCTION__);
+    sprintf(out_buf, "[%s] opendir failed on [%s]\n", __FUNCTION__, path);
     perror(out_buf);
     res = -errno;
     return res;
