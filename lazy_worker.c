@@ -25,30 +25,35 @@ void process_initial_file_store(char *path) {
 
   size_t stat_len = 0;
 
-  DIR *dp;
   struct dirent *de;
-  struct stat stbuf;
+
+  struct stat stbuf, meta_d_stbuf;
+  struct stat ab_f_stbuf,  meta_f_stbuf;
+
+  char *new_f_path_end = NULL;
 
   char out_buf[BUF_LEN];
   char ab_path[MAX_PATH_LEN];
   char new_path[MAX_PATH_LEN];
   char meta_path[MAX_PATH_LEN];
 
+  char ab_f_path[MAX_PATH_LEN];
+  char new_f_path[MAX_PATH_LEN];
+  char meta_f_path[MAX_PATH_LEN];
+
   char stat_buf[STAT_LEN];
 
-  struct fuse_file_info fi;
+  struct fuse_file_info fi, dir_fi;
   file_args f_args;
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  dp = opendir(ab_path);
-  if(NULL == dp) {
-    sprintf(out_buf, "[%s] unable to opendir [%s] errno [%d]\n", __FUNCTION__, ab_path, errno);
-    WR_2_STDOUT;
+  res = internal_opendir(ab_path, &dir_fi);
+  if(res < 0) {
     ABORT;
   }
 
-  while((de = readdir(dp)) != NULL) {
+  while((de = readdir(dir_fi.fh)) != NULL) {
 
 #ifdef _DIRENT_HAVE_D_TYPE
 
@@ -69,83 +74,101 @@ void process_initial_file_store(char *path) {
       ABORT;
     }
 
-    // Setup the metadata file path
-    strcpy(meta_path, dedupe_metadata);
-    strcat(meta_path, new_path);
-
     if(DT_DIR == de->d_type) {
 
-      res = internal_mkdir(meta_path, stbuf.st_mode);
-      if(res < 0) {
-        ABORT;
+      strcpy(meta_path, dedupe_metadata);
+      strcat(meta_path, new_path);
+
+      res = internal_getattr(meta_path, &meta_d_stbuf);
+
+      if(-ENOENT == res) {
+
+        res = internal_mkdir(meta_path, stbuf.st_mode);
+        if(res < 0) {
+          ABORT;
+        }
+
       }
 
       process_initial_file_store(new_path);
 
-      res = internal_rmdir(ab_path);
-      if(res < 0) {
-        ABORT;
-      }
-
     } else {
 
-      res = internal_mknod(meta_path, stbuf.st_mode, 0); 
-      if(res < 0) {
-        ABORT;
-      }
+      strcpy(new_f_path, path);
+      strcat(new_f_path, "/");
+      strcat(new_f_path, de->d_name);
+ 
+      if((new_f_path_end = strstr(new_f_path, BITMASK_FILE)) != NULL) {
 
-      fi.flags = O_WRONLY;
-      res = internal_open(meta_path, &fi);
-      if(res < 0) {
-        ABORT;
-      }
+        *new_f_path_end = '\0';
 
-      memset(&stat_buf, 0, STAT_LEN);
+        strcpy(ab_f_path, dedupe_file_store);
+        strcat(ab_f_path, new_f_path);
 
-      stbuf2char(stat_buf, &stbuf);
-      stat_buf[STAT_LEN-1] = '\n';
+        strcpy(meta_f_path, dedupe_metadata);
+        strcat(meta_f_path, new_f_path);
 
-      res = internal_write(meta_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi);
-      if(res < 0) {
-        ABORT;
-      }
+        res = internal_getattr(meta_f_path, &meta_f_stbuf);
 
-      if(stbuf.st_size > 0) {
+        if(-ENOENT == res) {
 
-        f_args.path = meta_path;
-        f_args.offset = STAT_LEN;
-        f_args.fi = &fi;
+          res = internal_getattr(ab_f_path, &ab_f_stbuf);
+          if(res < 0) {
+            ABORT;
+          }
 
-        res = compute_rabin_karp(ab_path, &f_args, &stbuf);
-        if(res < 0) {
-          sprintf(out_buf, "[%s] Rabin-Karp finger-printing failed on [%s]\n", __FUNCTION__, new_path);
-          WR_2_STDOUT;
-          //TODO decide if return or abort
-          ABORT;
+          res = internal_mknod(meta_f_path, ab_f_stbuf.st_mode, 0); 
+          if(res < 0) {
+            ABORT;
+          }
+         
+          fi.flags = O_WRONLY;
+          res = internal_open(meta_f_path, &fi);
+          if(res < 0) {
+            ABORT;
+          }
+         
+          memset(&stat_buf, 0, STAT_LEN);
+         
+          stbuf2char(stat_buf, &ab_f_stbuf);
+          stat_buf[STAT_LEN-1] = '\n';
+         
+          res = internal_write(meta_f_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi);
+          if(res < 0) {
+            ABORT;
+          }
+         
+          if(ab_f_stbuf.st_size > 0) {
+
+            f_args.path = meta_f_path;
+            f_args.offset = STAT_LEN;
+            f_args.fi = &fi;
+         
+            res = compute_rabin_karp(ab_f_path, &f_args, &ab_f_stbuf);
+            if(res < 0) {
+              sprintf(out_buf, "[%s] Rabin-Karp finger-printing failed on [%s]\n", __FUNCTION__, new_path);
+              WR_2_STDOUT;
+              //TODO decide if return or abort
+              ABORT;
+            }
+          }
+         
+          res = internal_release(meta_f_path, &fi);
+          if(res < 0) {
+            ABORT;
+          }
+         
+          res = internal_truncate(ab_f_path, (off_t)0);
+          if(res < 0) {
+            ABORT;
+          }
         }
-      }
-
-      res = internal_release(meta_path, &fi);
-      if(res < 0) {
-        ABORT;
-      }
-
-      // TODO - redesign for locks - if already taken -EWOULDBLOCK then return w/o unlinking the file.
-      // TODO - remove a dir from initial file store only if no files exist in it
-      // TODO - Detect the boundaries in the file using Rabin-Karp Fingerprinting Algorithm
-      // TODO - Calculate the hash value on each data block of the file using SHA-1 (160 bits)
-      // TODO - Store the hash values in the metadata file after the stat information
-      // TODO - Store the hash block inside the hash store if it does not already exist
-
-      res = internal_unlink(ab_path);
-      if(res < 0) {
-        ABORT;
       }
     }
 #endif /* _DIRENT_HAVE_D_TYPE */
   }
 
-  closedir(dp);
+  closedir(dir_fi.fh);
 }
 
 void *lazy_worker_thread(void *arg) {
@@ -161,6 +184,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(10);
+    sleep(40);
   }
 }

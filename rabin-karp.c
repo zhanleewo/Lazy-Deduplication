@@ -246,7 +246,11 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   char temp_data[MAXCHUNK + 1] = {0};
   char filechunk[MAXCHUNK + 1] = {0};
   char meta_data[OFF_HASH_LEN] = {0};
-  struct fuse_file_info fi;
+  char bitmask_file_path[MAX_PATH_LEN] = {0};
+
+  unsigned int *bitmask = NULL;
+
+  struct fuse_file_info fi, bitmask_fi;
 
   nbytes = MAXCHUNK;
   write_off = f_args->offset;
@@ -256,6 +260,25 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   if(res < 0) {
     ABORT;
   }
+
+  strcpy(bitmask_file_path, filestore_path);
+  strcat(bitmask_file_path, BITMASK_FILE);
+
+  bitmask_fi.flags = O_RDWR;
+  res = internal_open(bitmask_file_path, &bitmask_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
+  if(bitmask == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
+    perror(out_buf);
+    res = -errno;
+    return res;
+  }
+
+  internal_release(bitmask_file_path, &bitmask_fi);
 
   while(TRUE) {
 
@@ -272,7 +295,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 	res = 0;
     }
 
-    read_off +=res;
+    read_off += res;
 
     stblk = endblk = 0;
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
@@ -360,6 +383,11 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     if(st_off+endblk+1 == stbuf->st_size) {
       break;
     }
+  }
+
+  res = munmap(bitmask, BITMASK_LEN);
+  if(FAILED == res) {
+    ABORT;
   }
 
   res = internal_release(filestore_path, &fi);

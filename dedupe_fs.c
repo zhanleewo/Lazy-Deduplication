@@ -12,6 +12,8 @@ char *dedupe_metadata = "/tmp/dedupe_metadata";
 char *dedupe_hashes = "/tmp/dedupe_hashes";
 char *nlinks = "nlinks.txt";
 
+unsigned int *bitmask = NULL;
+
 dedupe_globals globals;
 
 extern void *lazy_worker_thread(void *);
@@ -126,7 +128,7 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
   memset(stbuf, 0, sizeof(struct stat));
 
-  if(SUCCESS == strcmp(path, "/")) {
+  /*if(SUCCESS == strcmp(path, "/")) {
     dedupe_fs_metadata_path(meta_path, path);
     res = lstat(meta_path, stbuf);
     if(FAILED == res) {
@@ -135,7 +137,7 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
       res = -errno;
     }
     return res;
-  }
+  }*/
 
   dedupe_fs_filestore_path(ab_path, path);
   res = lstat(ab_path, stbuf);
@@ -192,7 +194,6 @@ static int dedupe_fs_opendir(
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
-  char meta_path[MAX_PATH_LEN] = {0};
 
   DIR *dp;
 
@@ -201,37 +202,15 @@ static int dedupe_fs_opendir(
   WR_2_STDOUT;
 #endif
 
-  if(SUCCESS == strcmp(path, "/")) {
-    dedupe_fs_metadata_path(meta_path, path);
-    dp = opendir(meta_path);
-    if(NULL == dp) {
-      sprintf(out_buf, "[%s] opendir failed on [%s]", __FUNCTION__, ab_path);
-      perror(out_buf);
-      res = -errno;
-      return res;
-    }
-    fi->fh = (intptr_t)dp;
-    return SUCCESS;
-  }
-
   dedupe_fs_filestore_path(ab_path, path);
 
-  dp = opendir(ab_path);
+  res = internal_opendir(ab_path, fi);
 
-  if(NULL == dp) {
-
-    dedupe_fs_metadata_path(meta_path, path);
-
-    dp = opendir(meta_path);
-    if(NULL == dp) {
-      sprintf(out_buf, "[%s] opendir failed on [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
-      return res;
-    }
+  if(res < 0) {
+    // TODO after adding the .bitmask file, don't remove the dir, 
+    // then this call should always return 0;
+    fi->fh = NULL;
   }
-
-  fi->fh = (intptr_t)dp;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -247,12 +226,13 @@ static int dedupe_fs_readdir(
     off_t offset, 
     struct fuse_file_info *fi) {
 
-  int res = 0;
+  int res = 0, flag = FAILED;
 
   DIR *dp;
   struct dirent *de;
 
   char out_buf[BUF_LEN];
+  char meta_path[MAX_PATH_LEN] = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -261,18 +241,63 @@ static int dedupe_fs_readdir(
 
   dp = (DIR*) (uintptr_t)fi->fh;
 
-  de = readdir(dp);
-  if(de == NULL)  {
-    sprintf(out_buf, "[%s] readdir failed on [%s]", __FUNCTION__, path);
+  if(NULL != dp) {
+    de = readdir(dp);
+    if(de == NULL)  {
+      sprintf(out_buf, "[%s] readdir failed on [%s]", __FUNCTION__, path);
+      perror(out_buf);
+      res = -errno;
+      return res;
+    }
+ 
+    do {
+      if(filler(buf, de->d_name, NULL, 0))
+        res = -errno;
+      flag = SUCCESS;
+    } while((de = readdir(dp)) != NULL);
+  }
+
+
+  /* Dir does not exist in the metapath, Should be present 
+     in the filestore path
+   */
+
+  dedupe_fs_metadata_path(meta_path, path);
+
+  dp = opendir(meta_path);
+  if(NULL == dp) {
+    sprintf(out_buf, "[%s] opendir failed on [%s]", __FUNCTION__, meta_path);
     perror(out_buf);
     res = -errno;
-    return res;
+    if(SUCCESS == flag)
+      return SUCCESS;
+    else
+      return res;
+  }
+
+  de = readdir(dp);
+  if(de == NULL)  {
+    sprintf(out_buf, "[%s] readdir failed on [%s]", __FUNCTION__, meta_path);
+    perror(out_buf);
+    res = -errno;
+    if(SUCCESS == flag)
+      return SUCCESS;
+    else
+      return res;
   }
 
   do {
-    if(filler(buf, de->d_name, NULL, 0))
-      res = -errno;
+    if(SUCCESS == flag && (SUCCESS == strcmp(de->d_name, ".") ||
+          SUCCESS == strcmp(de->d_name, ".."))) {
+      /* Don't copy */
+    } else {
+      if(filler(buf, de->d_name, NULL, 0)) {
+        res = -errno;
+      }
+    }
   } while((de = readdir(dp)) != NULL);
+
+  closedir(dp);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -558,7 +583,7 @@ static int dedupe_fs_rmdir(const char *path) {
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  res = rmdir(ab_path);
+  res = internal_rmdir(ab_path);
   if(SUCCESS == res) {
     return res;
   }
@@ -638,10 +663,12 @@ static int dedupe_fs_mkdir(const char *path, mode_t mode) {
 
 static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
 
-  int fd, ret = 0;
+  int res = 0;
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
-  char meta_path[MAX_PATH_LEN] = {0};
+  char bitmask_file_path[MAX_PATH_LEN] = {0};
+
+  struct fuse_file_info bitmask_fi;
 
   struct fuse_context *mycontext = fuse_get_context();
 
@@ -654,27 +681,29 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  fd = open(ab_path, fi->flags);
-  if(FAILED == fd) {
-
-    dedupe_fs_metadata_path(meta_path, path);
-
-    fd = open(meta_path, fi->flags);
-    if(FAILED == fd) {
-      sprintf(out_buf, "[%s] open failed on [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      return -errno;
-    }
+  res = internal_open(ab_path, fi);
+  if(res < 0) {
+    return res;
   }
 
-  fi->fh = fd;
+  dedupe_fs_filestore_path(bitmask_file_path, path);
+  strcat(bitmask_file_path, BITMASK_FILE);
 
-  /*if(FAILED == flock(fi->fh, LOCK_EX)) {
-    sprintf(out_buf, "[%s] flock lock failed on [%s]", __FUNCTION__, ab_path);
+  bitmask_fi.flags = O_RDWR;
+  res = internal_open(bitmask_file_path, &bitmask_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
+  if(bitmask == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
     perror(out_buf);
+    res = -errno;
+    return res;
   }
 
-  fi->lock_owner = gettid();*/
+  internal_release(bitmask_file_path, &bitmask_fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -829,24 +858,40 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
 static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
-  int res;
-  char out_buf[BUF_LEN];
+  int res = 0, i = 0;
+  char out_buf[BUF_LEN] = {0};
+
+  off_t block_num = 0;
+
+  char ab_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
 
-  dedupe_fs_lock(path, fi->fh);
+  /*printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
+  printf("\n<<<START_OF_DATA>>>\n");
+  for(i = 0 ; i < size ; i++) {
+    printf("%c", buf[i]);
+  }
+  printf("\n<<<END_OF_DATA>>>\n");*/
 
-  res = pwrite(fi->fh, buf, size, offset);
-  if(FAILED == res) {
-    sprintf(out_buf, "[%s] pwrite failed on [%s]", __FUNCTION__, path);
-    perror(out_buf);
-    res = -errno;
+  dedupe_fs_filestore_path(ab_path, path);
+
+  dedupe_fs_lock(ab_path, fi->fh);
+
+  block_num = offset / MINCHUNK;
+
+  res = internal_write(ab_path, buf, size, offset, fi);
+  if(res < 0) {
+    return res;
   }
 
-  dedupe_fs_unlock(path, fi->fh);
+  bitmask[block_num/32] |= 1<<(block_num%32);
+
+  dedupe_fs_unlock(ab_path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -866,14 +911,13 @@ static int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  /*if(gettid() == fi->lock_owner) {
-    fi->lock_owner = 0;
-    if(FAILED == flock(fi->fh, LOCK_UN)) {
-      sprintf(out_buf, "[%s] flock unlock failed on [%s]", __FUNCTION__, path);
-      perror(out_buf);
-      return -errno;
-    }
-  }*/
+  res = munmap((void*)bitmask, BITMASK_LEN);
+  if(res < 0) {
+    res = -errno;
+    return res;
+  }
+
+  printf("file unmaped\n");
 
   res = close(fi->fh);
 
@@ -893,7 +937,8 @@ static int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  closedir((DIR *) (uintptr_t) fi->fh);
+  if(NULL != (fi->fh))
+    closedir((DIR *) (uintptr_t) fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -1106,9 +1151,13 @@ static int dedupe_fs_utime(const char *path, struct utimbuf *ubuf) {
 
 static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
-  int fd = 0;
-  char out_buf[BUF_LEN];
-  char ab_path[MAX_PATH_LEN];
+  int res = 0;
+
+  char out_buf[BUF_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
+  char bitmask_file_path[MAX_PATH_LEN] = {0};
+
+  struct fuse_file_info bitmask_fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -1117,14 +1166,39 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
 
   dedupe_fs_filestore_path(ab_path, path);
   
-  fd = creat(ab_path, mode);
-  if(FAILED == fd) {
-    sprintf(out_buf, "[%s] creat failed on [%s]", __FUNCTION__, ab_path);
-    perror(out_buf);
-    return -errno;
+  res = internal_create(ab_path, mode, fi);
+  if(res < 0) {
+    return res;
   }
 
-  fi->fh = fd;
+  dedupe_fs_filestore_path(bitmask_file_path, path);
+  strcat(bitmask_file_path, BITMASK_FILE);
+
+  res = internal_mknod(bitmask_file_path, mode, 0);
+  if(res < 0) {
+    return res;
+  }
+
+  bitmask_fi.flags = O_RDWR;
+  res = internal_open(bitmask_file_path, &bitmask_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  res = internal_write(bitmask_file_path, "", 1, (off_t)BITMASK_LEN - 1, &bitmask_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, (int)bitmask_fi.fh, (off_t)0);
+  if(bitmask == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
+    perror(out_buf);
+    res = -errno;
+    return res;
+  }
+
+  internal_release(bitmask_file_path, &bitmask_fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -1204,7 +1278,6 @@ static void * dedupe_fs_init(struct fuse_conn_info *conn) {
 #endif
 
   return (mycontext->private_data);
-
 }
 
 static void dedupe_fs_destroy(void *private_data) {
@@ -1222,7 +1295,6 @@ static void dedupe_fs_destroy(void *private_data) {
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
-
 }
 
 static struct fuse_operations dedupe_fs_oper = {

@@ -71,6 +71,8 @@ int internal_opendir(const char *path, struct fuse_file_info *fi) {
   dp = opendir(path);
 
   if(NULL == dp) {
+    sprintf(out_buf, "[%s] opendir failed\n", __FUNCTION__);
+    perror(out_buf);
     res = -errno;
     return res;
   }
@@ -133,6 +135,8 @@ int internal_open(const char *path, struct fuse_file_info *fi) {
 
   fd = open(path, fi->flags);
   if(FAILED == fd) {
+    sprintf(out_buf, "[%s] open failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
     res = -errno;
     return res;
   }
@@ -170,7 +174,6 @@ int internal_getattr(const char *path, struct stat *stbuf) {
   res = lstat(path, stbuf);
   if(FAILED == res) {
     res = -errno;
-    return res;
   }
 
 #ifdef DEBUG
@@ -178,7 +181,7 @@ int internal_getattr(const char *path, struct stat *stbuf) {
   WR_2_STDOUT;
 #endif
 
-  return 0;
+  return res;
 }
 
 int internal_mkdir(const char *path, mode_t mode) {
@@ -192,8 +195,11 @@ int internal_mkdir(const char *path, mode_t mode) {
 #endif
 
   res = mkdir(path, mode);
-  if(FAILED == res)
+  if(FAILED == res) {
+    sprintf(out_buf, "[%s] mkdir failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
     res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -245,6 +251,11 @@ int internal_mknod(const char *path, mode_t mode, dev_t rdev) {
     res = mknod(path, mode, rdev);
   }
 
+  if(res < 0) {
+    sprintf(out_buf, "[%s] mknod failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+  }
+
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
@@ -254,6 +265,30 @@ int internal_mknod(const char *path, mode_t mode, dev_t rdev) {
     return -errno;
 
   return res;
+}
+
+int internal_seek(const char *path, off_t offset, struct fuse_file_info *fi) {
+  off_t res = 0;
+  char out_buf[BUF_LEN] = {0};
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  res = lseek(fi->fh, offset, SEEK_SET);
+  if(res == (off_t)FAILED) {
+    sprintf(out_buf, "[%s] lseek failed to seek to [%lld] on [%s]", __FUNCTION__, offset, path);
+    perror(out_buf);
+    return -errno;
+  }
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  return SUCCESS;
 }
 
 int internal_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
@@ -330,6 +365,33 @@ int internal_unlink(const char *path) {
 #endif
 
   return res;
+}
+
+int internal_truncate(const char *path, off_t newsize) {
+
+  int res = 0;
+  char out_buf[BUF_LEN] = {0};
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  res = truncate(path, newsize);
+  if(FAILED == res) {
+    sprintf(out_buf, "[%s] truncate failed on [%s] for [%ld]", __FUNCTION__, path, newsize);
+    perror(out_buf);
+    res = -errno;
+    return res;
+  }
+
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  return SUCCESS;
 }
 
 int internal_releasedir(const char *path, struct fuse_file_info *fi) {

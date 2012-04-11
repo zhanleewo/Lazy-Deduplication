@@ -13,12 +13,17 @@
 #include <sys/resource.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 
 #include <sys/time.h>
 
 #include <errno.h>
 #include <pthread.h>
 #include <fuse.h>
+
+#define BITMASK_FILE "._bitmask"
+#define NUM_BITMASK_WORDS 2048
+#define BITMASK_LEN sizeof(int)*NUM_BITMASK_WORDS
 
 #define MAX_PATH_LEN 1024
 #define BUF_LEN 512
