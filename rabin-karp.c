@@ -14,8 +14,8 @@ extern int internal_create(const char *, mode_t, struct fuse_file_info *);
 extern int internal_opendir(const char *, struct fuse_file_info *);
 extern int internal_mkdir(const char *, mode_t);
 extern int internal_releasedir(const char *, struct fuse_file_info *);
-extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
-extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
+extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 
 
 int pattern_match(unsigned long long int rkhash) {
@@ -160,7 +160,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
       exit(errno);
     }
 
-    res = internal_write(file_chunk_path, filechunk, len, (off_t)0, &fi);
+    res = internal_write(file_chunk_path, filechunk, len, (off_t)0, &fi, FALSE);
     if(res < 0) {
       exit(errno);
     }
@@ -183,7 +183,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
     // Setup the number of links to 1
     filechunk[0] = '1';
     filechunk[1] = '\0';
-    res = internal_write(nlinks_path, filechunk, 1, (off_t)0, &fi);
+    res = internal_write(nlinks_path, filechunk, 1, (off_t)0, &fi, FALSE);
     if(res < 0) {
       exit(errno);
     }
@@ -205,7 +205,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
       exit(errno);
     }
 
-    res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi);
+    res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
     if(res < 0) {
       exit(errno);
     }
@@ -215,7 +215,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
     sprintf(nlinks_cnt, "%d", nlinks_num);
 
-    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi);
+    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
     if(res < 0) {
       exit(errno);
     }
@@ -287,7 +287,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     st_off += endblk + 1;
     
     if(read_off < stbuf->st_size) {
-      res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi);
+      res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi, FALSE);
       if(res < 0) {
         ABORT;
       }
@@ -314,7 +314,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       memset(meta_data, 0, OFF_HASH_LEN);
       snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
-      internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
+      internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi, FALSE);
       write_off += OFF_HASH_LEN;
       old_data_len = 0;
 
@@ -338,7 +338,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         memset(meta_data, 0, OFF_HASH_LEN);
         snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
-        internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
+        internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi, FALSE);
      
         write_off += OFF_HASH_LEN;
      
@@ -364,7 +364,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
         memset(meta_data, 0, OFF_HASH_LEN);
         snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, st_off+endblk, sha1_out);
 
-        internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi);
+        internal_write(f_args->path, meta_data, OFF_HASH_LEN, write_off, f_args->fi, FALSE);
         write_off += OFF_HASH_LEN;
         old_data_len = 0;
 

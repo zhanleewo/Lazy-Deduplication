@@ -15,9 +15,9 @@ int internal_rmdir(const char *);
 
 int internal_mknod(const char *, mode_t, dev_t);
 
-int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
+int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 
-int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
+int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 
 int internal_release(const char *, struct fuse_file_info *);
 

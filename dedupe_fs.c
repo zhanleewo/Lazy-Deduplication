@@ -46,6 +46,7 @@ void dedupe_fs_metadata_path(char ab_path[MAX_PATH_LEN], const char *path) {
 }
 
 int dedupe_fs_lock(const char *path, uint64_t fd) {
+
   char out_buf[BUF_LEN] = {0};
 
   if(FAILED == flock(fd, LOCK_EX)) {
@@ -58,6 +59,7 @@ int dedupe_fs_lock(const char *path, uint64_t fd) {
 }
 
 int dedupe_fs_unlock(const char *path, uint64_t fd) {
+
   char out_buf[BUF_LEN] = {0};
 
   if(FAILED == flock(fd, LOCK_UN)) {
@@ -165,7 +167,7 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
       if(res < 0) {
       } else {
         memset(&stat_buf, 0, STAT_LEN);
-        res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+        res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
         if(res < 0) {
           // res contains the errno to return to libfuse
         } else {
@@ -450,7 +452,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
     return res;
   }
 
-  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res <= 0) {
     return res;
   }
@@ -462,7 +464,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
   stbuf2char(stat_buf, &stbuf);
 
-  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res < 0) {
     return res;
   }
@@ -511,7 +513,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
     return res;
   }
 
-  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res <= 0) {
     return res;
   }
@@ -523,7 +525,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 
   stbuf2char(stat_buf, &stbuf);
 
-  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res < 0) {
     return res;
   }
@@ -750,17 +752,18 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
   res = internal_getattr(meta_path, &meta_stbuf);
 
-  if(res >= 0) {
+  if(res != -ENOENT) {
 
-    meta_file = 1;
+    meta_file = TRUE;
+    meta_fi.flags = O_RDONLY;
     res = internal_open(meta_path, &meta_fi);
     if(res < 0) {
       return res;
     }
 
-    res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi);
+    res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
     if(res <= 0) {
-      exit(1);
+      //exit(1);
     }
 
     meta_f_readcnt += STAT_LEN;
@@ -790,21 +793,29 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     block_num = req_off / MINCHUNK;
 
     printf("toread [%ld] read [%d] req_off [%lld] block_num [%lld]\n", toread, read, req_off, block_num);
+
+    dedupe_fs_lock(ab_path, fi->fh);
     if(bitmask[block_num/32] & (1<<(block_num%32))) {
  
       /* Requested block is present in the filestore */
       printf("chunk inside filestore\n");
       dedupe_fs_filestore_path(ab_path, path);
-      r_cnt = internal_read(ab_path, buf+read, MINCHUNK, req_off, fi);
-      if(r_cnt <= 0)
+      r_cnt = internal_read(ab_path, buf+read, MINCHUNK, req_off, fi, TRUE);
+      if(r_cnt <= 0) {
+        dedupe_fs_unlock(ab_path, fi->fh);
         return r_cnt;
+      }
  
+      dedupe_fs_unlock(ab_path, fi->fh);
+
       toread -= r_cnt;
       read += r_cnt;
       req_off += r_cnt;
  
     } else {
  
+      dedupe_fs_unlock(ab_path, fi->fh);
+
       if(toread < MINCHUNK)
         hash_read = toread;
       else 
@@ -815,7 +826,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
       while(meta_f_readcnt < meta_stbuf.st_size) {
   
         memset(hash_line, 0, OFF_HASH_LEN);
-        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, fi);
+        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
         if(res <= 0) {
           return res;
         }
@@ -841,7 +852,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
             return res;
           }
   
-          r_cnt = internal_read(srchstr, buf+read, hash_read, req_off-st_off, &hash_fi);
+          r_cnt = internal_read(srchstr, buf+read, hash_read, req_off-st_off, &hash_fi, FALSE);
           if(r_cnt <= 0) {
             return read;
           }
@@ -866,10 +877,11 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     }
   }
 
-  internal_release(meta_path, &meta_fi);
-
-  if(meta_file == 1) {
+  if(meta_file == TRUE) {
     // update the st_atime modified during file read
+
+    internal_release(meta_path, &meta_fi);
+
     time(&tm);
     stbuf.st_atime = tm;
  
@@ -882,7 +894,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     memset(stat_buf, 0, STAT_LEN);
     stbuf2char(stat_buf, &stbuf);
  
-    res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &wr_fi);
+    res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &wr_fi, FALSE);
     if(res < 0) {
       internal_release(meta_path, &wr_fi);
       return res;
@@ -901,13 +913,20 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
 static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
-  int res = 0, i = 0;
+  int res = 0, meta_file = 0;
+
+  size_t meta_f_readcnt = 0;
+
+  off_t block_num = 0, hash_off = 0;
+
   char out_buf[BUF_LEN] = {0};
-
-  off_t block_num = 0;
-
+  char stat_buf[STAT_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
+
+  struct stat meta_stbuf, stbuf;
+
+  struct fuse_file_info meta_fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -915,26 +934,51 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 #endif
 
   printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
-  /*printf("\n<<<START_OF_DATA>>>\n");
-  for(i = 0 ; i < size ; i++) {
-    printf("%c", buf[i]);
+
+  dedupe_fs_metadata_path(meta_path, path);
+
+  res = internal_getattr(meta_path, &meta_stbuf);
+
+  if(res != -ENOENT) {
+
+    meta_file = TRUE;
+    meta_fi.flags = O_RDONLY;
+    res = internal_open(meta_path, &meta_fi);
+    if(res < 0) {
+      return res;
+    }
+
+    res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
+    if(res <= 0) {
+      //exit(1);
+    }
+
+    meta_f_readcnt += STAT_LEN;
+    char2stbuf(stat_buf, &stbuf);
+    hash_off = STAT_LEN;
+
+    /*
+     * When offset is not a multiple of 4K read the start of the 4K until offset
+     * and store it. Same holds when size is not a multiple of 4K.
+     */
+
+  } else {
+
+    dedupe_fs_filestore_path(ab_path, path);
+
+    dedupe_fs_lock(ab_path, fi->fh);
+
+    res = internal_write(ab_path, buf, size, offset, fi, TRUE);
+    if(res < 0) {
+      dedupe_fs_unlock(ab_path, fi->fh);
+      return res;
+    }
+
+    block_num = offset / MINCHUNK;
+    bitmask[block_num/32] |= 1<<(block_num%32);
+
+    dedupe_fs_unlock(ab_path, fi->fh);
   }
-  printf("\n<<<END_OF_DATA>>>\n");*/
-
-  dedupe_fs_filestore_path(ab_path, path);
-
-  dedupe_fs_lock(ab_path, fi->fh);
-
-  block_num = offset / MINCHUNK;
-
-  res = internal_write(ab_path, buf, size, offset, fi);
-  if(res < 0) {
-    return res;
-  }
-
-  bitmask[block_num/32] |= 1<<(block_num%32);
-
-  dedupe_fs_unlock(ab_path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -1040,7 +1084,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     return res;
   }
 
-  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res <= 0) {
     internal_release(meta_path, &fi);
     return res;
@@ -1056,7 +1100,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   } else if (newsize < stbuf.st_size) {
 
     while(TRUE) {
-      res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi);
+      res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi, FALSE);
       if(res <= 0) {
         internal_release(meta_path, &fi);
         return res;
@@ -1085,7 +1129,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
     hash_off = cur_off + (num_hash_lines -1) * OFF_HASH_LEN;
 
-    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi);
+    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi, FALSE);
     if(res <= 0) {
       internal_release(meta_path, &fi);
       return res;
@@ -1108,7 +1152,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
       hash_off += OFF_HASH_LEN;
 
       snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, end_off, sha1_out);
-      res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi);
+      res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi, FALSE);
       if(res < 0) {
         internal_release(meta_path, &fi);
         return res;
@@ -1129,7 +1173,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     hash_off += OFF_HASH_LEN;
 
     snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, end_off, sha1_out);
-    res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi);
+    res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi, FALSE);
     if(res < 0) {
       internal_release(meta_path, &fi);
       return res;
@@ -1147,7 +1191,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
   stbuf2char(stat_buf, &stbuf);
 
-  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi);
+  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res < 0) {
     internal_release(meta_path, &fi);
     return res;
@@ -1228,7 +1272,7 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
     return res;
   }
 
-  res = internal_write(bitmask_file_path, "", 1, (off_t)BITMASK_LEN - 1, &bitmask_fi);
+  res = internal_write(bitmask_file_path, "", 1, (off_t)BITMASK_LEN - 1, &bitmask_fi, FALSE);
   if(res < 0) {
     return res;
   }

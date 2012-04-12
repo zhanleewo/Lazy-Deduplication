@@ -13,8 +13,8 @@ extern int internal_mknod(const char *, mode_t, dev_t);
 extern int internal_rmdir(const char *);
 extern int internal_unlink(const char *);
 extern int internal_open(const char *, struct fuse_file_info *);
-extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *);
-extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *);
+extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
+extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 extern int internal_release(const char *, struct fuse_file_info *);
 
 extern int compute_rabin_karp(const char *, file_args *, struct stat *);
@@ -136,8 +136,8 @@ void process_initial_file_store(char *path) {
          
           stbuf2char(stat_buf, &ab_f_stbuf);
           stat_buf[STAT_LEN-1] = '\n';
-         
-          res = internal_write(meta_f_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi);
+
+          res = internal_write(meta_f_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
           if(res < 0) {
             ABORT;
           }

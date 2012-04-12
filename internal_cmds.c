@@ -28,7 +28,7 @@ int internal_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
   return SUCCESS;
 }
 
-int internal_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+int internal_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi, int locked) {
 
   int res = 0;
   char out_buf[BUF_LEN] = {0};
@@ -38,14 +38,20 @@ int internal_read(const char *path, char *buf, size_t size, off_t offset, struct
   WR_2_STDOUT;
 #endif
 
-  dedupe_fs_lock(path, fi->fh);
+  if(FALSE == locked) {
+    dedupe_fs_lock(path, fi->fh);
+  }
+
   res = pread(fi->fh, buf, size, offset);
   if(FAILED == res) {
     sprintf(out_buf, "[%s] pread failed on [%s]", __FUNCTION__);
     perror(out_buf);
     res = -errno;
   }
-  dedupe_fs_unlock(path, fi->fh);
+
+  if(FALSE == locked) {
+    dedupe_fs_unlock(path, fi->fh);
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -290,7 +296,7 @@ int internal_seek(const char *path, off_t offset, struct fuse_file_info *fi) {
   return SUCCESS;
 }
 
-int internal_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+int internal_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi, int locked) {
 
   int res;
   char out_buf[BUF_LEN] = {0};
@@ -300,14 +306,20 @@ int internal_write(const char *path, char *buf, size_t size, off_t offset, struc
   WR_2_STDOUT;
 #endif
 
-  dedupe_fs_lock(path, fi->fh);
+  if(FALSE == locked) {
+    dedupe_fs_lock(path, fi->fh);
+  }
+
   res = pwrite(fi->fh, buf, size, offset);
   if(FAILED == res) {
     sprintf(out_buf, "[%s] pwrite failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
     res = -errno;
   }
-  dedupe_fs_unlock(path, fi->fh);
+
+  if(FALSE == locked) {
+    dedupe_fs_unlock(path, fi->fh);
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
