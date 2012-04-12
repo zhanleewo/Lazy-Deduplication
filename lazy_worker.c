@@ -116,6 +116,7 @@ void process_initial_file_store(char *path) {
 
         if(-ENOENT == res) {
 
+          /* Careful with the last block updation */
           res = internal_getattr(ab_f_path, &ab_f_stbuf);
           if(res < 0) {
             ABORT;
@@ -172,8 +173,10 @@ void process_initial_file_store(char *path) {
           /* File already exists in the dedupe database */
           /* i.e., file has been updated since last dedupe pass*/
 
-          fi.flags = O_RDWR;
-          res = internal_open(ab_path, &fi);
+          /* Careful with the last block updation */
+
+          bitmask_fi.flags = O_RDWR;
+          res = internal_open(ab_path, &bitmask_fi);
           if(res < 0) {
             ABORT;
           }
@@ -218,6 +221,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(600);
+    sleep(40);
   }
 }

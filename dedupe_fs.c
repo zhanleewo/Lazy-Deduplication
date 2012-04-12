@@ -913,20 +913,30 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
 static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
 
-  int res = 0, meta_file = 0;
+  int res = 0, meta_file = 0, read = 0;
 
-  size_t meta_f_readcnt = 0;
+  size_t meta_f_readcnt = 0, r_cnt = 0;
+  size_t req_off_len = 0, req_size_len = 0;
 
   off_t block_num = 0, hash_off = 0;
+  off_t req_off_st = 0, req_size_st = 0;
+  off_t st_off = 0, end_off = 0;
+
+  char *sha1 = NULL, *saveptr = NULL;
+  char *st = NULL, *end = NULL;
 
   char out_buf[BUF_LEN] = {0};
+  char srchstr[MAX_PATH_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
+  char hash_line[OFF_HASH_LEN] = {0};
+
+  char write_buf[MINCHUNK] = {0};
 
   struct stat meta_stbuf, stbuf;
 
-  struct fuse_file_info meta_fi;
+  struct fuse_file_info meta_fi, hash_fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -945,15 +955,15 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     meta_fi.flags = O_RDONLY;
     res = internal_open(meta_path, &meta_fi);
     if(res < 0) {
-      return res;
+      ABORT;
     }
 
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
     if(res <= 0) {
-      //exit(1);
+      ABORT;
     }
 
-    meta_f_readcnt += STAT_LEN;
+    meta_f_readcnt = STAT_LEN;
     char2stbuf(stat_buf, &stbuf);
     hash_off = STAT_LEN;
 
@@ -962,13 +972,170 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
      * and store it. Same holds when size is not a multiple of 4K.
      */
 
+    if((offset%MINCHUNK) != 0) {
+
+      read = 0;
+      req_off_st = (offset/MINCHUNK) * MINCHUNK;
+      req_off_len = offset - req_off_st;
+
+      // Read req_off_st to req_off_end from hash blocks
+
+      while(meta_f_readcnt < meta_stbuf.st_size) {
+
+        memset(hash_line, 0, OFF_HASH_LEN);
+        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
+        if(res <= 0) {
+          ABORT;
+        }
+
+        st = strtok_r(hash_line, ":", &saveptr);
+        st_off = (off_t)atoll(st);
+  
+        end = strtok_r(NULL, ":", &saveptr);
+        end_off = (off_t)atoll(end);
+ 
+        sha1 = strtok_r(NULL, ":", &saveptr);
+        sha1[strlen(sha1)-1] = '\0';
+ 
+        if(req_off_st >= st_off && req_off_st <= end_off) {
+
+          create_dir_search_str(srchstr, sha1);
+          strcat(srchstr, "/");
+          strcat(srchstr, sha1);
+  
+          hash_fi.flags = O_RDONLY;
+          res = internal_open(srchstr, &hash_fi);
+          if(res < 0) {
+            ABORT;
+          }
+
+          r_cnt = internal_read(srchstr, write_buf+read, req_off_len, req_off_st-st_off, &hash_fi, FALSE);
+          if(r_cnt <= 0) {
+            ABORT;
+          }
+
+          res = internal_release(srchstr, &hash_fi);
+          if(res < 0) {
+            ABORT;
+          }
+
+          read += r_cnt;
+          req_off_st += r_cnt;
+          req_off_len -= r_cnt;
+        }
+
+        meta_f_readcnt += OFF_HASH_LEN;
+        hash_off += OFF_HASH_LEN;
+
+        if(req_off_len <= 0)
+          break;
+      }
+    }
+
+    // memcpy the data sent from application
+
+    memcpy(write_buf+(offset%MINCHUNK), buf, size);
+    read += size;
+
+    if(((offset+size)%MINCHUNK) != 0) {
+      // Overwrite of size bytes from offset (or) insertion/overwrite
+      // on the endblock of the file
+
+      req_size_st = offset+size;
+      req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
+
+      if(req_size_len > stbuf.st_size) {
+        req_size_len = stbuf.st_size;
+      }
+
+      req_size_len = req_size_len - req_size_st;
+      meta_f_readcnt = STAT_LEN;
+
+      while(meta_f_readcnt < meta_stbuf.st_size) {
+
+        memset(hash_line, 0, OFF_HASH_LEN);
+        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
+        if(res <= 0) {
+          exit(1);
+        }
+
+        st = strtok_r(hash_line, ":", &saveptr);
+        st_off = (off_t)atoll(st);
+  
+        end = strtok_r(NULL, ":", &saveptr);
+        end_off = (off_t)atoll(end);
+  
+        sha1 = strtok_r(NULL, ":", &saveptr);
+        sha1[strlen(sha1)-1] = '\0';
+
+        if(req_size_st >= st_off && req_size_st <= end_off) {
+          create_dir_search_str(srchstr, sha1);
+          strcat(srchstr, "/");
+          strcat(srchstr, sha1);
+  
+          hash_fi.flags = O_RDONLY;
+          res = internal_open(srchstr, &hash_fi);
+          if(res < 0) {
+           ABORT;
+          }
+ 
+          r_cnt = internal_read(srchstr, write_buf+read, req_size_len, req_size_st-st_off, &hash_fi, FALSE);
+          if(r_cnt <= 0) {
+            ABORT;
+          }
+
+          res = internal_release(srchstr, &hash_fi);
+          if(res < 0) {
+            ABORT;
+          }
+
+          read += r_cnt;
+          req_size_st += r_cnt;
+          req_size_len -= r_cnt;
+        }
+
+        meta_f_readcnt += OFF_HASH_LEN;
+        hash_off += OFF_HASH_LEN;
+  
+        if(req_size_len <= 0)
+          break;
+      }
+    }
+
+    if((offset+size)%MINCHUNK != 0) {
+      req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
+
+      if(req_size_len > stbuf.st_size) {
+        req_size_len = stbuf.st_size;
+      }
+
+    } else {
+      req_size_len = offset+size;
+    }
+
+    dedupe_fs_filestore_path(ab_path, path);
+
+    dedupe_fs_lock(ab_path, fi->fh);
+
+    res = internal_write(ab_path, write_buf, req_size_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
+    if(res < 0) {
+      ABORT;
+    }
+
+    block_num = offset / MINCHUNK;
+    bitmask[block_num/32] |= 1<<(block_num%32);
+
+    dedupe_fs_unlock(ab_path, fi->fh);
+
   } else {
 
     dedupe_fs_filestore_path(ab_path, path);
 
     dedupe_fs_lock(ab_path, fi->fh);
 
-    res = internal_write(ab_path, buf, size, offset, fi, TRUE);
+    memcpy(write_buf+(offset%MINCHUNK), buf, size);
+
+    res = internal_write(ab_path, write_buf+(offset%MINCHUNK), size, offset, fi, TRUE);
     if(res < 0) {
       dedupe_fs_unlock(ab_path, fi->fh);
       return res;

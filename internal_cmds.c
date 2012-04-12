@@ -76,7 +76,7 @@ int internal_opendir(const char *path, struct fuse_file_info *fi) {
   dp = opendir(path);
 
   if(NULL == dp) {
-    sprintf(out_buf, "[%s] opendir failed on [%s]\n", __FUNCTION__, path);
+    sprintf(out_buf, "[%s] opendir failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
     res = -errno;
     return res;
