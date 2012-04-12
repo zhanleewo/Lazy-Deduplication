@@ -38,34 +38,35 @@ unsigned long long int Rabin_Karp_Hash(
     unsigned long long int end_index,
     int newchunk, 
     unsigned long long int hash_prev) {
-        unsigned long long int i,j,power,hash_current=0;
-        power = 1;
-        if(newchunk==0)
-        {
-                for(i=0;i<=SUBSTRING_LEN-1;i++)
-                {
-                        power = 1;
-                        for(j=0;j<SUBSTRING_LEN-1-i;j++)
-                        {
-                                power= ((power%MODULO_PRIME) * (BASE%MODULO_PRIME))%MODULO_PRIME;
-                        }
-                        hash_current += ((substring[start_index+i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME;
-                }
-                hash_current = hash_current%MODULO_PRIME;
-        }
-        else
-        {
-                        for(j=0;j<SUBSTRING_LEN-1;j++)
-                        {
-                                power= ((power%MODULO_PRIME) * (BASE%MODULO_PRIME))%MODULO_PRIME;
-                        }
 
-                hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (power % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;
+  unsigned long long int i,j,power,hash_current=0;
+  power = 1;
+  if(newchunk==0)
+  {
+    for(i=0;i<=SUBSTRING_LEN-1;i++)
+    {
+      power = 1;
+      for(j=0;j<SUBSTRING_LEN-1-i;j++)
+      {
+        power= ((power%MODULO_PRIME) * (BASE%MODULO_PRIME))%MODULO_PRIME;
+      }
+      hash_current += ((substring[start_index+i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME;
+    }
+    hash_current = hash_current%MODULO_PRIME;
+  }
+  else
+  {
+    for(j=0;j<SUBSTRING_LEN-1;j++)
+    {
+      power= ((power%MODULO_PRIME) * (BASE%MODULO_PRIME))%MODULO_PRIME;
+    }
 
-        }
+    hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (power % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;
 
-        printf("Hash value of the string is %d\n",hash_current);
-        return hash_current;
+  }
+
+  printf("Hash value of the string is %d\n",hash_current);
+  return hash_current;
 }
 
 char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
