@@ -6,13 +6,13 @@
 #define SUBSTRING_LEN 4096
 #define HEXA_HASH_LEN 41
 #define INT_MAX_LEN 21
-#define BASE 19
-#define MODULO_PRIME 23
+#define BASE 31123
+#define MODULO_PRIME 39839
 #define MINCHUNK 4096
 #define MAXCHUNK 8192
 #define TRUE 1
 #define FALSE 0
-#define BITMASK 15
+#define BITMASK 4095
 
 #define NLINKS_WIDTH 20
 
