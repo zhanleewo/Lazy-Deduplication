@@ -6,6 +6,8 @@
 #include "internal_cmds.h"
 #include "sha1.h"
 
+unsigned long long int RM=1;
+
 extern char *dedupe_hashes;
 extern char *nlinks;
 
@@ -17,57 +19,47 @@ extern int internal_releasedir(const char *, struct fuse_file_info *);
 extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 
-
-int pattern_match(unsigned long long int rkhash) {
-  unsigned long long int num;
-
-  num = (rkhash & (unsigned long long int)BITMASK);
-  if(num == FALSE)
-  {
-    return TRUE;
-  }
-  else
-  {
-    return FALSE;
-  }
+void precompute_RM()
+{
+        int i;
+        for(i=1;i<=SUBSTRING_LEN-1;i++)
+                RM = (R * RM)%Q;
 }
 
-unsigned long long int Rabin_Karp_Hash(
-    char substring[], 
-    unsigned long long int start_index,
-    unsigned long long int end_index,
-    int newchunk, 
-    unsigned long long int hash_prev) {
-
-  unsigned long long int i,j,power,hash_current=0;
-  power = 1;
-  if(newchunk==0)
-  {
-    for(i=0;i<=SUBSTRING_LEN-1;i++)
-    {
-      power = 1;
-      for(j=0;j<SUBSTRING_LEN-1-i;j++)
-      {
-        power= ((power%MODULO_PRIME) * (BASE%MODULO_PRIME))%MODULO_PRIME;
-      }
-      hash_current += ((substring[start_index+i] % MODULO_PRIME) * ((power)%MODULO_PRIME))%MODULO_PRIME;
-    }
-    hash_current = hash_current%MODULO_PRIME;
-  }
-  else
-  {
-    for(j=0;j<SUBSTRING_LEN-1;j++)
-    {
-      power= ((power%MODULO_PRIME) * (BASE%MODULO_PRIME))%MODULO_PRIME;
-    }
-
-    hash_current=(((( (hash_prev % MODULO_PRIME) + MODULO_PRIME - ((substring[start_index-1] % MODULO_PRIME) * (power % MODULO_PRIME)) % MODULO_PRIME ) % MODULO_PRIME) * (BASE % MODULO_PRIME)) % MODULO_PRIME + substring[end_index] % MODULO_PRIME) % MODULO_PRIME;
-
-  }
-
-  printf("Hash value of the string is %d\n",hash_current);
-  return hash_current;
+int pattern_match(unsigned long long int rkhash)
+{
+        unsigned long long int num;
+        num = (rkhash & (unsigned long long int)BITMASK);
+        if(num == FALSE)
+        {
+                return TRUE;
+        }
+        else
+        {
+                return FALSE;
+        }
 }
+
+
+unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int start_index, unsigned long long int end_index, int newchunk, unsigned long long int hash_prev)
+{
+        unsigned long long int i,hash_current = 0;
+        if(newchunk==0)
+        {
+                for(i=0;i<=SUBSTRING_LEN-1;i++)
+                        hash_current = (R * hash_current + substring[start_index+i])%Q;
+                        // Depending on the values have to modulo each value again to avoid overflow
+        }
+        else
+        {
+                hash_current = (hash_prev + Q - RM*substring[start_index-1] % Q) % Q;
+                hash_current = (hash_current*R + substring[end_index]) % Q;
+        }
+
+        return hash_current;
+}
+
+
 
 char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
 {

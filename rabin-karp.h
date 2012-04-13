@@ -3,11 +3,11 @@
 
 #include "dedupe_fs.h"
 
+#define R 256
+#define Q 3113
 #define SUBSTRING_LEN 4096
 #define HEXA_HASH_LEN 41
 #define INT_MAX_LEN 21
-#define BASE 31123
-#define MODULO_PRIME 39839
 #define MINCHUNK 4096
 #define MAXCHUNK 8192
 #define TRUE 1
@@ -17,6 +17,8 @@
 #define NLINKS_WIDTH 20
 
 #define OFF_HASH_LEN 2*INT_MAX_LEN+HEXA_HASH_LEN+1
+
+void precompute_RM();
 
 int pattern_match(unsigned long long int rkhash);
 
