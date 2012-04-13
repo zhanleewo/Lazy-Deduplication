@@ -951,6 +951,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   if(res != -ENOENT) {
 
+    printf("not a first time\n");
+
     meta_file = TRUE;
     meta_fi.flags = O_RDONLY;
     res = internal_open(meta_path, &meta_fi);
@@ -1128,6 +1130,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     dedupe_fs_unlock(ab_path, fi->fh);
 
   } else {
+
+    printf("First time write\n");
 
     dedupe_fs_filestore_path(ab_path, path);
 

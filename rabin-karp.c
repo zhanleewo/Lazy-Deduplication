@@ -21,45 +21,42 @@ extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_
 
 void precompute_RM()
 {
-        int i;
-        for(i=1;i<=SUBSTRING_LEN-1;i++)
-                RM = (R * RM)%Q;
+  int i;
+  for(i=1;i<=SUBSTRING_LEN-1;i++)
+    RM = (R * RM)%Q;
 }
 
 int pattern_match(unsigned long long int rkhash)
 {
-        unsigned long long int num;
-        num = (rkhash & (unsigned long long int)BITMASK);
-        if(num == FALSE)
-        {
-                return TRUE;
-        }
-        else
-        {
-                return FALSE;
-        }
+  unsigned long long int num;
+  num = (rkhash & (unsigned long long int)BITMASK);
+  if(num == FALSE)
+  {
+    return TRUE;
+  }
+  else
+  {
+    return FALSE;
+  }
 }
-
 
 unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int start_index, unsigned long long int end_index, int newchunk, unsigned long long int hash_prev)
 {
-        unsigned long long int i,hash_current = 0;
-        if(newchunk==0)
-        {
-                for(i=0;i<=SUBSTRING_LEN-1;i++)
-                        hash_current = (R * hash_current + substring[start_index+i])%Q;
-                        // Depending on the values have to modulo each value again to avoid overflow
-        }
-        else
-        {
-                hash_current = (hash_prev + Q - RM*substring[start_index-1] % Q) % Q;
-                hash_current = (hash_current*R + substring[end_index]) % Q;
-        }
+  unsigned long long int i,hash_current = 0;
+  if(newchunk==0)
+  {
+    for(i=0;i<=SUBSTRING_LEN-1;i++)
+      hash_current = (R * hash_current + substring[start_index+i])%Q;
+    // Depending on the values have to modulo each value again to avoid overflow
+  }
+  else
+  {
+    hash_current = (hash_prev + Q - RM*substring[start_index-1] % Q) % Q;
+    hash_current = (hash_current*R + substring[end_index]) % Q;
+  }
 
-        return hash_current;
+  return hash_current;
 }
-
-
 
 char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
 {
