@@ -1514,6 +1514,8 @@ static void * dedupe_fs_init(struct fuse_conn_info *conn) {
   WR_2_STDOUT;
 #endif
 
+  precompute_RM();
+
   pthread_mutex_init(&globals.lk, NULL);
   pthread_attr_init(&globals.thr_attr);
 
