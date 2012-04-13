@@ -4,7 +4,7 @@
 #include "dedupe_fs.h"
 
 #define R 256
-#define Q 15497
+#define Q 11497
 #define SUBSTRING_LEN 4096
 #define HEXA_HASH_LEN 41
 #define INT_MAX_LEN 21
