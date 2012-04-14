@@ -32,17 +32,18 @@ void process_initial_file_store(char *path) {
 
   char *new_f_path_end = NULL;
 
-  char out_buf[BUF_LEN];
-  char ab_path[MAX_PATH_LEN];
-  char new_path[MAX_PATH_LEN];
-  char meta_path[MAX_PATH_LEN];
+  char out_buf[BUF_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
+  char ab_old_path[MAX_PATH_LEN] = {0};
+  char new_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
 
-  char ab_f_path[MAX_PATH_LEN];
-  char new_f_path[MAX_PATH_LEN];
-  char meta_f_path[MAX_PATH_LEN];
-  char bitmask_file_path[MAX_PATH_LEN];
+  char ab_f_path[MAX_PATH_LEN] = {0};
+  char new_f_path[MAX_PATH_LEN] = {0};
+  char meta_f_path[MAX_PATH_LEN] = {0};
+  char bitmask_file_path[MAX_PATH_LEN] = {0};
 
-  char stat_buf[STAT_LEN];
+  char stat_buf[STAT_LEN] = {0};
 
   unsigned int *btmsk = NULL;
 
@@ -50,9 +51,9 @@ void process_initial_file_store(char *path) {
   struct fuse_file_info bitmask_fi;
   file_args f_args;
 
-  dedupe_fs_filestore_path(ab_path, path);
+  dedupe_fs_filestore_path(ab_old_path, path);
 
-  res = internal_opendir(ab_path, &dir_fi);
+  res = internal_opendir(ab_old_path, &dir_fi);
   if(res < 0) {
     ABORT;
   }
@@ -91,7 +92,6 @@ void process_initial_file_store(char *path) {
         if(res < 0) {
           ABORT;
         }
-
       }
 
       process_initial_file_store(new_path);
@@ -205,7 +205,7 @@ void process_initial_file_store(char *path) {
 #endif /* _DIRENT_HAVE_D_TYPE */
   }
 
-  closedir(dir_fi.fh);
+  internal_releasedir(ab_old_path, &dir_fi);
 }
 
 void *lazy_worker_thread(void *arg) {
@@ -221,6 +221,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(40);
+    sleep(90);
   }
 }

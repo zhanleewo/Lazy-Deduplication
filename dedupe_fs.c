@@ -128,55 +128,40 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
   WR_2_STDOUT;
 #endif
 
+  dedupe_fs_metadata_path(meta_path, path);
   memset(stbuf, 0, sizeof(struct stat));
-
-  /*if(SUCCESS == strcmp(path, "/")) {
-    dedupe_fs_metadata_path(meta_path, path);
-    res = lstat(meta_path, stbuf);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] lstat failed for [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
-    }
-    return res;
-  }*/
-
-  dedupe_fs_filestore_path(ab_path, path);
-  res = lstat(ab_path, stbuf);
-  if(FAILED == res) {
-    // Its okay to fail above as we can check 
-    // if that file exists inside the dedupe database
-    dedupe_fs_metadata_path(meta_path, path);
-    memset(stbuf, 0, sizeof(struct stat));
-    res = lstat(meta_path, stbuf);
-    if(FAILED == res) {
-      // File does not exist in our dedupe database;;
-      // Oops something went wrong; return error
-      sprintf(out_buf, "[%s] lstat failed for [%s]", __FUNCTION__, meta_path);
-      perror(out_buf);
-      res = -errno;
+  res = internal_getattr(meta_path, stbuf);
+  if(res < 0) {
+    dedupe_fs_filestore_path(ab_path, path);
+    res = internal_getattr(ab_path, stbuf);
+    if(res < 0) {
       return res;
-
-    } else if (S_IFDIR == (stbuf->st_mode & S_IFDIR)) {
-      // do nothing; already stbuf contains the required valid data
-
+    }
+  } else if(S_IFDIR == (stbuf->st_mode & S_IFDIR)) {
+    // Get the latest dir information from filestore
+    dedupe_fs_filestore_path(ab_path, path);
+    res = internal_getattr(ab_path, stbuf);
+    if(res < 0) {
+      return res;
+    }
+  } else {
+    // Not a directory; should be a file
+    // Retrieve not-so-recent information 
+    // from dedupe database
+    fi.flags = O_RDONLY;
+    res = internal_open(meta_path, &fi);
+    if(res < 0) {
     } else {
-      // Not a directory; should be a file
-      fi.flags = O_RDONLY;
-      res = internal_open(meta_path, &fi);
+      memset(&stat_buf, 0, STAT_LEN);
+      res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
       if(res < 0) {
+        // res contains the errno to return to libfuse
       } else {
-        memset(&stat_buf, 0, STAT_LEN);
-        res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
-        if(res < 0) {
-          // res contains the errno to return to libfuse
-        } else {
-          // process stat_buf to form the original data
-          char2stbuf(stat_buf, stbuf);
-        }
-
-        internal_release(meta_path, &fi);
+        // process stat_buf to form the original data
+        char2stbuf(stat_buf, stbuf);
       }
+
+      internal_release(meta_path, &fi);
     }
   }
 
@@ -207,11 +192,8 @@ static int dedupe_fs_opendir(
   dedupe_fs_filestore_path(ab_path, path);
 
   res = internal_opendir(ab_path, fi);
-
   if(res < 0) {
-    // TODO after adding the .bitmask file, don't remove the dir, 
-    // then this call should always return 0;
-    fi->fh = NULL;
+    return res;
   }
 
 #ifdef DEBUG
@@ -243,63 +225,21 @@ static int dedupe_fs_readdir(
 
   dp = (DIR*) (uintptr_t)fi->fh;
 
-  if(NULL != dp) {
-    de = readdir(dp);
-    if(de == NULL)  {
-      sprintf(out_buf, "[%s] readdir failed on [%s]", __FUNCTION__, path);
-      perror(out_buf);
-      res = -errno;
-      return res;
-    }
- 
-    do {
-      if(filler(buf, de->d_name, NULL, 0))
-        res = -errno;
-      flag = SUCCESS;
-    } while((de = readdir(dp)) != NULL);
-  }
-
-
-  /* Dir does not exist in the metapath, Should be present 
-     in the filestore path
-   */
-
-  dedupe_fs_metadata_path(meta_path, path);
-
-  dp = opendir(meta_path);
-  if(NULL == dp) {
-    sprintf(out_buf, "[%s] opendir failed on [%s]", __FUNCTION__, meta_path);
-    perror(out_buf);
-    res = -errno;
-    if(SUCCESS == flag)
-      return SUCCESS;
-    else
-      return res;
-  }
-
   de = readdir(dp);
   if(de == NULL)  {
-    sprintf(out_buf, "[%s] readdir failed on [%s]", __FUNCTION__, meta_path);
+    sprintf(out_buf, "[%s] readdir failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
     res = -errno;
-    if(SUCCESS == flag)
-      return SUCCESS;
-    else
-      return res;
+    return res;
   }
 
   do {
-    if(SUCCESS == flag && (SUCCESS == strcmp(de->d_name, ".") ||
-          SUCCESS == strcmp(de->d_name, ".."))) {
-      /* Don't copy */
-    } else {
-      if(filler(buf, de->d_name, NULL, 0)) {
+    if(NULL == strstr(de->d_name, BITMASK_FILE)) {
+      if(filler(buf, de->d_name, NULL, 0))
         res = -errno;
-      }
     }
+    flag = SUCCESS;
   } while((de = readdir(dp)) != NULL);
-
-  closedir(dp);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -779,8 +719,11 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     }
   }
 
-  if(size > stbuf.st_size) {
-    toread = stbuf.st_size;
+  if((req_off+size) > stbuf.st_size) {
+    toread = stbuf.st_size - req_off;
+    if(toread < 0) {
+      toread = 0;
+    }
   } else {
     toread = size;
   }
@@ -799,8 +742,15 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
  
       /* Requested block is present in the filestore */
       printf("chunk inside filestore\n");
+
+      if(toread < MINCHUNK) {
+        hash_read = toread;
+      } else {
+        hash_read = MINCHUNK;
+      }
+ 
       dedupe_fs_filestore_path(ab_path, path);
-      r_cnt = internal_read(ab_path, buf+read, MINCHUNK, req_off, fi, TRUE);
+      r_cnt = internal_read(ab_path, buf+read, hash_read, req_off, fi, TRUE);
       if(r_cnt <= 0) {
         dedupe_fs_unlock(ab_path, fi->fh);
         return r_cnt;
@@ -868,11 +818,12 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
           hash_read -= r_cnt;
         }
   
+        if(hash_read <= 0) {
+          break;
+        }
+
         meta_f_readcnt += OFF_HASH_LEN;
         hash_off += OFF_HASH_LEN;
-  
-        if(hash_read <= 0)
-          break;
       }
     }
   }
@@ -965,8 +916,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       ABORT;
     }
 
-    meta_f_readcnt = STAT_LEN;
     char2stbuf(stat_buf, &stbuf);
+    meta_f_readcnt = STAT_LEN;
     hash_off = STAT_LEN;
 
     /*
@@ -1026,11 +977,12 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
           req_off_len -= r_cnt;
         }
 
+        if(req_off_len <= 0) {
+          break;
+        }
+
         meta_f_readcnt += OFF_HASH_LEN;
         hash_off += OFF_HASH_LEN;
-
-        if(req_off_len <= 0)
-          break;
       }
     }
 
@@ -1051,14 +1003,18 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       }
 
       req_size_len = req_size_len - req_size_st;
-      meta_f_readcnt = STAT_LEN;
+      if(req_size_len < 0) {
+        req_size_len = 0;
+      }
+      //meta_f_readcnt = STAT_LEN;
+      //hash_off = STAT_LEN;
 
       while(meta_f_readcnt < meta_stbuf.st_size) {
 
         memset(hash_line, 0, OFF_HASH_LEN);
         res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
         if(res <= 0) {
-          exit(1);
+          ABORT;
         }
 
         st = strtok_r(hash_line, ":", &saveptr);
@@ -1096,11 +1052,12 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
           req_size_len -= r_cnt;
         }
 
+        if(req_size_len <= 0) {
+          break;
+        }
+
         meta_f_readcnt += OFF_HASH_LEN;
         hash_off += OFF_HASH_LEN;
-  
-        if(req_size_len <= 0)
-          break;
       }
     }
 
@@ -1156,7 +1113,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
   WR_2_STDOUT;
 #endif
 
-  return res;
+  return ((int)size);
 }
 
 static int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
@@ -1195,8 +1152,7 @@ static int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  if(NULL != (fi->fh))
-    closedir((DIR *) (uintptr_t) fi->fh);
+  closedir((DIR *) (uintptr_t) fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

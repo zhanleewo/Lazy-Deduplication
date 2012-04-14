@@ -43,6 +43,7 @@ int pattern_match(unsigned long long int rkhash)
 unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int start_index, unsigned long long int end_index, int newchunk, unsigned long long int hash_prev)
 {
   unsigned long long int i,hash_current = 0;
+
   if(newchunk==0)
   {
     for(i=0;i<=SUBSTRING_LEN-1;i++)
@@ -236,6 +237,8 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
+  int block_num = 0;
+
   long long int res = 0;
   unsigned long long int nbytes = 0, old_data_len = 0, pos=0;
   unsigned long long int newchunk = 0, rkhash = 0;
@@ -287,17 +290,34 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     memcpy(filedata, temp_data, old_data_len);
     nbytes = MAXCHUNK - old_data_len;
     st_off += endblk + 1;
-    
+
     if(read_off < stbuf->st_size) {
-      res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi, FALSE);
+
+      dedupe_fs_lock(filestore_path, fi.fh);
+      res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi, TRUE);
       if(res < 0) {
         ABORT;
       }
-    } else {
-	res = 0;
-    }
 
-    read_off += res;
+      read_off += res;
+
+      while(TRUE) {
+        if(((block_num * MINCHUNK)+MINCHUNK) > read_off)
+          break;
+        btmsk[block_num/32] &= ~(1<<(block_num%32));
+        block_num += 1;
+      }
+
+      if(read_off == stbuf->st_size) {
+        btmsk[block_num/32] &= ~(1<<(block_num%32));
+        block_num += 1;
+      }
+
+      dedupe_fs_unlock(filestore_path, fi.fh);
+
+    } else {
+      res = 0;
+    }
 
     stblk = endblk = 0;
     pos = (stblk + MINCHUNK) - SUBSTRING_LEN;
