@@ -171,7 +171,7 @@ void process_initial_file_store(char *path) {
         } else {
 
           /* File already exists in the dedupe database */
-          /* i.e., file has been updated since last dedupe pass*/
+          /* i.e., file could have been updated since last dedupe pass*/
 
           /* Careful with the last block updation */
 

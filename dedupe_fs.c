@@ -1062,7 +1062,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     }
 
     if((offset+size)%MINCHUNK != 0) {
-      req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
+      req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK) - ((offset/MINCHUNK)*MINCHUNK);
 
       if(req_size_len > stbuf.st_size) {
         req_size_len = stbuf.st_size;
