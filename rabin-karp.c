@@ -46,9 +46,8 @@ unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int s
 
   if(newchunk==0)
   {
-    for(i=0;i<=SUBSTRING_LEN-1;i++)
+    for(i=0;i<SUBSTRING_LEN;i++)
       hash_current = (R * hash_current + substring[start_index+i])%Q;
-    // Depending on the values have to modulo each value again to avoid overflow
   }
   else
   {
