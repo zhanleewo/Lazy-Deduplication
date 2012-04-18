@@ -6,6 +6,7 @@
 #define R 256
 #define Q 11497
 #define SUBSTRING_LEN 4096
+#define MAGIC_H_LEN 48
 #define HEXA_HASH_LEN 41
 #define INT_MAX_LEN 21
 #define MINCHUNK 4096

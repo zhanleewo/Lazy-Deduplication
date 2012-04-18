@@ -189,7 +189,7 @@ void process_initial_file_store(char *path) {
             res = -errno;
             return res;
           }
-    
+
           internal_release(bitmask_file_path, &bitmask_fi);
 
           // TODO Read the file and recompute rabin-karp only for the

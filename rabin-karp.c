@@ -6,7 +6,7 @@
 #include "internal_cmds.h"
 #include "sha1.h"
 
-unsigned long long int RM=1;
+unsigned long long int RM = 1;
 
 extern char *dedupe_hashes;
 extern char *nlinks;
@@ -21,14 +21,17 @@ extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_
 
 void precompute_RM()
 {
-  int i;
-  for(i=1;i<=SUBSTRING_LEN-1;i++)
-    RM = (R * RM)%Q;
+  int i = 0;
+
+  for(i = 1 ; i <= MAGIC_H_LEN-1 ; i++) {
+    RM = (R * RM) % Q;
+  }
 }
 
 int pattern_match(unsigned long long int rkhash)
 {
-  unsigned long long int num;
+  unsigned long long int num = 0;
+
   num = (rkhash & (unsigned long long int)BITMASK);
   if(num == FALSE)
   {
@@ -40,19 +43,37 @@ int pattern_match(unsigned long long int rkhash)
   }
 }
 
+unsigned long long int hash_48(char *str, unsigned long long int st_indx) {
+
+  int i = 0;
+  unsigned long long int hash_current = 0;
+
+  for(i = 0 ; i < MAGIC_H_LEN ; i++, st_indx++) {
+    hash_current = (R * hash_current + str[st_indx]) % Q;
+  }
+
+  return hash_current;
+}
+
+
 unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int start_index, unsigned long long int end_index, int newchunk, unsigned long long int hash_prev)
 {
-  unsigned long long int i,hash_current = 0;
+  int i = 0;
+  unsigned long long int hash_current = 0;
 
-  if(newchunk==0)
+  if(newchunk == 0)
   {
-    for(i=0;i<SUBSTRING_LEN;i++)
-      hash_current = (R * hash_current + substring[start_index+i])%Q;
+    hash_current = hash_48(substring, start_index);
+
+    for(i = MAGIC_H_LEN ; i < SUBSTRING_LEN ; i++) {
+      hash_current = (hash_current + Q - RM * substring[start_index+i-MAGIC_H_LEN] % Q) % Q;
+      hash_current = (hash_current * R + substring[start_index+i]) % Q;
+    }
   }
   else
   {
-    hash_current = (hash_prev + Q - RM*substring[start_index-1] % Q) % Q;
-    hash_current = (hash_current*R + substring[end_index]) % Q;
+    hash_current = (hash_prev + Q - RM * substring[start_index] % Q) % Q;
+    hash_current = (hash_current * R + substring[end_index]) % Q;
   }
 
   return hash_current;
@@ -60,7 +81,7 @@ unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int s
 
 char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
 {
-  unsigned long long int i=0;
+  int i = 0;
 
   while(start+i<=end)
   {
@@ -72,6 +93,7 @@ char* copy_substring(char *str, char *s, unsigned long long int start,unsigned l
 }
 
 void create_dir_search_str(char *dir_srchstr, char *sha1) {
+
   strcpy(dir_srchstr, dedupe_hashes);
   strcat(dir_srchstr, "/");
   strncat(dir_srchstr, sha1, 2);
@@ -84,6 +106,7 @@ void create_dir_search_str(char *dir_srchstr, char *sha1) {
 }
 
 void create_chunkfile(char *filechunk, char *sha1, size_t len) {
+
   unsigned long long int res = 0, nlinks_num = 0;
 
   char out_buf[BUF_LEN] = {0};
@@ -236,11 +259,11 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
-  int block_num = 0;
+  int block_num = 0, newchunk = 0;
 
   long long int res = 0;
-  unsigned long long int nbytes = 0, old_data_len = 0, pos=0;
-  unsigned long long int newchunk = 0, rkhash = 0;
+  unsigned long long int nbytes = 0, old_data_len = 0, pos = 0;
+  unsigned long long int rkhash = 0;
 
   off_t stblk = 0, endblk = 0;
   off_t read_off = 0, write_off = 0, st_off = -1;
@@ -347,7 +370,11 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
     while(TRUE) {
 
-      rkhash = Rabin_Karp_Hash(filedata, pos, endblk,newchunk,rkhash);
+      if(newchunk == 0) {
+        rkhash = Rabin_Karp_Hash(filedata, pos, endblk, newchunk, rkhash);
+      } else {
+        rkhash = Rabin_Karp_Hash(filedata, endblk-MAGIC_H_LEN, endblk, newchunk, rkhash);
+      }
 
       if(TRUE == pattern_match(rkhash)) {
 
