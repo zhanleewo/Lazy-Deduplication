@@ -703,7 +703,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
     if(res <= 0) {
-      //exit(1);
+      ABORT;
     }
 
     meta_f_readcnt += STAT_LEN;

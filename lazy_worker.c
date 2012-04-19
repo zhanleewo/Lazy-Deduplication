@@ -19,6 +19,99 @@ extern int internal_release(const char *, struct fuse_file_info *);
 
 extern int compute_rabin_karp(const char *, file_args *, struct stat *);
 
+void updates_handler(const char *path) {
+
+  int i = 0, j = 0;
+  int res = 0, block_num = 0;
+
+  char *new_f_path_end = NULL;
+  char *meta_f_path_end = NULL;
+
+  char data_buf[MAXCHUNK] = {0};
+  char stat_buf[STAT_LEN] = {0};
+  char out_buf[BUF_LEN] = {0};
+  char meta_f_path[MAX_PATH_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
+  char ab_f_path[MAX_PATH_LEN] = {0};
+
+  unsigned int *btmsk = NULL;
+
+  struct fuse_file_info bitmask_fi;
+
+  dedupe_fs_filestore_path(ab_path, path);
+  dedupe_fs_metadata_path(meta_path, path);
+
+  strcpy(ab_f_path, ab_path);
+
+  new_f_path_end = strstr(ab_f_path, BITMASK_FILE);
+  if(NULL == new_f_path_end) {
+    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMASK_FILE);
+    WR_2_STDOUT;
+    ABORT;
+  }
+  *new_f_path_end = NULL;
+
+  meta_f_path_end = strstr(meta_path, BITMASK_FILE);
+  if(NULL == meta_f_path_end) {
+    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMASK_FILE);
+    WR_2_STDOUT;
+    ABORT;
+  }
+  *meta_f_path_end = NULL;
+
+  bitmask_fi.flags = O_RDWR;
+  res = internal_open(ab_path, &bitmask_fi);
+  if(res < 0) {
+    ABORT;
+  }
+
+  btmsk = (unsigned int *) mmap(NULL, BITMASK_LEN, 
+                  PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
+  if(btmsk == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+    res = -errno;
+    return res;
+  }
+
+  internal_release(path, &bitmask_fi);
+
+  res = internal_open(meta_path, &meta_fi);
+  if(res < 0) {
+    ABORT;
+  }
+
+  memset(stat_buf, 0, STAT_LEN);
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
+  if(res <= 0) {
+    ABORT;
+  }
+
+  // TODO Read the file and recompute rabin-karp only for the
+  // blocks which has been updated
+
+  for(i = 0 ; i < NUM_BITMASK_WORDS ; i++) {
+
+    if(btmsk[i] >= TRUE) {
+      for(j = 0 ; j < 32 ; j++) {
+
+        if(btmsk[i] & (1<<j)) {
+
+          block_num = i*32 + j;
+
+        }
+      }
+    }
+  }
+
+  res = munmap(btmsk, BITMASK_LEN);
+  if(FAILED == res) {
+    ABORT;
+  }
+
+  internal_release(meta_path, &meta_fi);
+}
+
 void process_initial_file_store(char *path) {
 
   int res = 0;
@@ -41,11 +134,8 @@ void process_initial_file_store(char *path) {
   char ab_f_path[MAX_PATH_LEN] = {0};
   char new_f_path[MAX_PATH_LEN] = {0};
   char meta_f_path[MAX_PATH_LEN] = {0};
-  char bitmask_file_path[MAX_PATH_LEN] = {0};
 
   char stat_buf[STAT_LEN] = {0};
-
-  unsigned int *btmsk = NULL;
 
   struct fuse_file_info fi, dir_fi;
   struct fuse_file_info bitmask_fi;
@@ -175,30 +265,8 @@ void process_initial_file_store(char *path) {
 
           /* Careful with the last block updation */
 
-          bitmask_fi.flags = O_RDWR;
-          res = internal_open(ab_path, &bitmask_fi);
-          if(res < 0) {
-            ABORT;
-          }
+          updates_handler(new_path);
 
-          btmsk = (unsigned int *) mmap(NULL, BITMASK_LEN, 
-                          PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
-          if(btmsk == MAP_FAILED) {
-            sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
-            perror(out_buf);
-            res = -errno;
-            return res;
-          }
-
-          internal_release(bitmask_file_path, &bitmask_fi);
-
-          // TODO Read the file and recompute rabin-karp only for the
-          // blocks which has been updated
-
-          res = munmap(btmsk, BITMASK_LEN);
-          if(FAILED == res) {
-            ABORT;
-          }
         }
       }
     }
