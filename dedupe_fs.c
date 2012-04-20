@@ -1078,6 +1078,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
     res = internal_write(ab_path, write_buf, req_size_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
     if(res < 0) {
+      dedupe_fs_unlock(ab_path, fi->fh);
       ABORT;
     }
 

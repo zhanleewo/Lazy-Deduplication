@@ -64,7 +64,6 @@ unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int s
   if(newchunk == 0)
   {
     hash_current = hash_48(substring, start_index);
-
     for(i = MAGIC_H_LEN ; i < SUBSTRING_LEN ; i++) {
       hash_current = (hash_current + Q - RM * substring[start_index+i-MAGIC_H_LEN] % Q) % Q;
       hash_current = (hash_current * R + substring[start_index+i]) % Q;
@@ -74,6 +73,7 @@ unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int s
   {
     hash_current = (hash_prev + Q - RM * substring[start_index] % Q) % Q;
     hash_current = (hash_current * R + substring[end_index]) % Q;
+
   }
 
   return hash_current;
@@ -257,6 +257,43 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
   }
 }
 
+
+void dedupe_data_buf(const char *databuf, int *end_off, int databuf_len, char *new_sha1) {
+
+  unsigned long long int rkhash = 0, pos = 0;
+  off_t stblk = 0, endblk = 0;
+
+  int newchunk = 0;
+
+  char *sha1_out = NULL;
+
+  if(databuf_len >= MINCHUNK) {
+    for(endblk = MINCHUNK-1 ; endblk < databuf_len ; endblk++, pos++, newchunk++) {
+
+      if(newchunk == 0) {
+        rkhash = Rabin_Karp_Hash(databuf, pos, endblk, newchunk, rkhash);
+      } else {
+        rkhash = Rabin_Karp_Hash(databuf, endblk-MAGIC_H_LEN, endblk, newchunk, rkhash);
+      }
+
+      if(TRUE == pattern_match(rkhash)) {
+        endblk++;
+        break;
+      }
+    }
+  } else {
+    endblk = databuf_len;
+  }
+
+  *end_off = endblk - 1;
+  sha1_out = sha1(databuf, endblk);
+
+  memcpy(new_sha1, sha1_out, HEXA_HASH_LEN);
+  free(sha1_out);
+
+  return;
+}
+
 int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stbuf) {
 
   int block_num = 0, newchunk = 0;
@@ -268,7 +305,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   off_t stblk = 0, endblk = 0;
   off_t read_off = 0, write_off = 0, st_off = -1;
 
-  char out_buf[BUF_LEN], *sha1_out = NULL;
+  char *sha1_out = NULL;
+  char out_buf[BUF_LEN] = {0};
   char filedata[MAXCHUNK + 1] = {0};
   char temp_data[MAXCHUNK + 1] = {0};
   char filechunk[MAXCHUNK + 1] = {0};

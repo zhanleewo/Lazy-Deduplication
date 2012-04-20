@@ -1,5 +1,6 @@
 #include "dedupe_fs.h"
 #include "internal_cmds.h"
+#include "rabin-karp.h"
 
 extern char *dedupe_file_store;
 extern char *dedupe_metadata;
@@ -17,26 +18,49 @@ extern int internal_write(const char *, char *, size_t, off_t, struct fuse_file_
 extern int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *, int locked);
 extern int internal_release(const char *, struct fuse_file_info *);
 
-extern int compute_rabin_karp(const char *, file_args *, struct stat *);
-
 void updates_handler(const char *path) {
 
   int i = 0, j = 0;
-  int res = 0, block_num = 0;
+  int res = 0, read = 0;
+  int toread = 0, todedupe = 0;
 
+  int old_data_len = 0, new_data_endoff = 0;
+
+  size_t r_cnt = 0, meta_f_readcnt = 0;
+  size_t tot_file_read = 0;
+
+  off_t st_hash_off = 0, end_hash_off = 0;
+  off_t st_new_off = 0, end_new_off = 0;
+  off_t cur_block_off = 0;
+
+  off_t hash_off = 0;
+  off_t new_meta_off = 0;
+
+  char *st = NULL, *end = NULL;
   char *new_f_path_end = NULL;
   char *meta_f_path_end = NULL;
+  char *sha1 = NULL, *saveptr = NULL;
 
-  char data_buf[MAXCHUNK] = {0};
+  char hash_line[OFF_HASH_LEN] = {0};
+  char new_hash_line[OFF_HASH_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
   char out_buf[BUF_LEN] = {0};
-  char meta_f_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
+  char srchstr[MAX_PATH_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char new_meta_path[MAX_PATH_LEN] = {0};
   char ab_f_path[MAX_PATH_LEN] = {0};
+  char data_buf[MAXCHUNK+MINCHUNK] = {0};
+  char old_data_buf[MAXCHUNK] = {0};
+  char new_sha1[HEXA_HASH_LEN] = {0};
 
   unsigned int *btmsk = NULL;
 
+  struct stat meta_stbuf, ab_stbuf;
+
   struct fuse_file_info bitmask_fi;
+  struct fuse_file_info new_meta_fi, meta_fi;
+  struct fuse_file_info hash_fi, ab_fi;
 
   dedupe_fs_filestore_path(ab_path, path);
   dedupe_fs_metadata_path(meta_path, path);
@@ -59,6 +83,9 @@ void updates_handler(const char *path) {
   }
   *meta_f_path_end = NULL;
 
+  strcpy(new_meta_path, meta_path);
+  strcat(new_meta_path, ".new_meta");
+
   bitmask_fi.flags = O_RDWR;
   res = internal_open(ab_path, &bitmask_fi);
   if(res < 0) {
@@ -76,6 +103,11 @@ void updates_handler(const char *path) {
 
   internal_release(path, &bitmask_fi);
 
+  res = internal_getattr(meta_path, &meta_stbuf);
+  if(res < 0) {
+    ABORT;
+  }
+
   res = internal_open(meta_path, &meta_fi);
   if(res < 0) {
     ABORT;
@@ -87,20 +119,143 @@ void updates_handler(const char *path) {
     ABORT;
   }
 
+  char2stbuf(stat_buf, &ab_stbuf);
+
+  res = internal_open(ab_f_path, &ab_fi);
+  if(res < 0) {
+    ABORT;
+  }
+
+  res = internal_create(new_meta_path, 0755, &new_meta_fi);
+  if(res < 0) {
+    ABORT;
+  }
+
+  new_meta_off = STAT_LEN;
+
   // TODO Read the file and recompute rabin-karp only for the
   // blocks which has been updated
 
-  for(i = 0 ; i < NUM_BITMASK_WORDS ; i++) {
+  while(i < NUM_BITMASK_WORDS) {
 
-    if(btmsk[i] >= TRUE) {
-      for(j = 0 ; j < 32 ; j++) {
+    cur_block_off = i * MINCHUNK;
 
-        if(btmsk[i] & (1<<j)) {
+    if(read-old_data_len > 0) {
+      memcpy(data_buf, old_data_buf, read-old_data_len);
+      read -= old_data_len;
+    }
 
-          block_num = i*32 + j;
+    while(read < MAXCHUNK) {
 
+      if(btmsk[i/32] & (1<<(i%32))) {
+
+        res = internal_read(ab_f_path, data_buf+read, MINCHUNK, cur_block_off, &ab_fi, FALSE);
+        if(res <= 0) {
+          ABORT;
+        }
+        read += res;
+        tot_file_read += res;
+        cur_block_off += res;
+
+      } else {
+
+        if(tot_file_read >= ab_stbuf.st_size) {
+          i += 1;
+          break;
+        }
+
+        meta_f_readcnt = STAT_LEN;
+        hash_off = STAT_LEN;
+
+        // add logic for the last file
+        toread = MINCHUNK;
+
+        while(meta_f_readcnt < meta_stbuf.st_size) {
+
+          memset(hash_line, 0, OFF_HASH_LEN);
+          res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
+          if(res <= 0) {
+            ABORT;
+          }
+
+          st = strtok_r(hash_line, ":", &saveptr);
+          st_hash_off = (off_t)atoll(st);
+     
+          end = strtok_r(NULL, ":", &saveptr);
+          end_hash_off = (off_t)atoll(end);
+     
+          sha1 = strtok_r(NULL, ":", &saveptr);
+          sha1[strlen(sha1)-1] = '\0';
+     
+          if(cur_block_off >= st_hash_off && cur_block_off <= end_hash_off) {
+     
+            create_dir_search_str(srchstr, sha1);
+            strcat(srchstr, "/");
+            strcat(srchstr, sha1);
+         
+            hash_fi.flags = O_RDONLY;
+            res = internal_open(srchstr, &hash_fi);
+            if(res < 0) {
+              ABORT;
+            }
+            
+            r_cnt = internal_read(srchstr, data_buf+read, toread, cur_block_off-st_hash_off, &hash_fi, FALSE);
+            if(r_cnt < 0) {
+              ABORT;
+            }
+         
+            res = internal_release(srchstr, &hash_fi);
+            if(res < 0) {
+              ABORT;
+            }
+     
+            toread -= r_cnt;
+            read += r_cnt;
+            tot_file_read += r_cnt;
+            cur_block_off += r_cnt;
+          }
+     
+          if(toread <= 0) {
+            break;
+          }
+
+          hash_off += OFF_HASH_LEN;
+          meta_f_readcnt += OFF_HASH_LEN;
         }
       }
+
+      i += 1;
+    }
+
+    if(read > MAXCHUNK) {
+      todedupe = MAXCHUNK;
+    } else {
+      todedupe = read;
+    }
+
+    if(read > 0) {
+      dedupe_data_buf(data_buf, &new_data_endoff, todedupe, new_sha1);
+
+      old_data_len = new_data_endoff+1;
+      if(read-old_data_len > 0) {
+        memcpy(old_data_buf, data_buf+old_data_len, read-old_data_len);
+      }
+
+      if(st_new_off == 0)
+        end_new_off += new_data_endoff;
+      else
+        end_new_off += old_data_len;
+
+      memset(new_hash_line, 0, OFF_HASH_LEN);
+      snprintf(new_hash_line, OFF_HASH_LEN, "%lld:%lld:%s\n", st_new_off, end_new_off, new_sha1);
+      internal_write(new_meta_path, new_hash_line, OFF_HASH_LEN, new_meta_off, &new_meta_fi, FALSE);
+
+      new_meta_off += OFF_HASH_LEN;
+
+      st_new_off = end_new_off+1;
+
+    } else {
+      old_data_len = 0;
     }
   }
 
@@ -108,6 +263,8 @@ void updates_handler(const char *path) {
   if(FAILED == res) {
     ABORT;
   }
+
+  internal_release(new_meta_path, &new_meta_fi);
 
   internal_release(meta_path, &meta_fi);
 }
@@ -289,6 +446,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(90);
+    sleep(20);
   }
 }
