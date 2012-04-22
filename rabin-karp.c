@@ -88,7 +88,7 @@ char* copy_substring(char *str, char *s, off_t start, off_t end)
     s[i] = str[start+i];
     i++;
   }
-  s[i]='\0';
+
   return s;
 }
 

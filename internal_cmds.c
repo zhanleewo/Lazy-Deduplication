@@ -327,6 +327,7 @@ int internal_write(const char *path, char *buf, size_t size, off_t offset, struc
 }
 
 int internal_release(const char *path, struct fuse_file_info *fi) {
+
   int res = 0;
   char out_buf[BUF_LEN] = {0};
 
@@ -335,7 +336,12 @@ int internal_release(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  res = close(fi->fh);
+  res = close(fi->fh); 
+  if(FAILED == res) {
+    sprintf(out_buf, "[%s] close failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+    res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -423,6 +429,7 @@ int internal_truncate(const char *path, off_t newsize) {
 
 int internal_releasedir(const char *path, struct fuse_file_info *fi) {
 
+  int res = 0;
   char out_buf[BUF_LEN] = {0};
 
 #ifdef DEBUG
@@ -430,7 +437,12 @@ int internal_releasedir(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  closedir((DIR *) (uintptr_t) fi->fh);
+  res = closedir((DIR *) (uintptr_t) fi->fh);
+  if(FAILED == res) {
+    sprintf(out_buf, "[%s] closedir failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+    res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

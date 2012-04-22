@@ -873,6 +873,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   size_t meta_f_readcnt = 0, r_cnt = 0;
   size_t req_off_len = 0, req_size_len = 0;
+  size_t write_len = 0;
 
   off_t block_num = 0, hash_off = 0;
   off_t req_off_st = 0, req_size_st = 0;
@@ -890,9 +891,11 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   char write_buf[MINCHUNK] = {0};
 
-  struct stat meta_stbuf, stbuf;
+  struct stat meta_stbuf = {0};
+  struct stat stbuf = {0};
 
-  struct fuse_file_info meta_fi, hash_fi;
+  struct fuse_file_info meta_fi = {0};
+  struct fuse_file_info hash_fi = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -939,6 +942,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       read = 0;
       req_off_st = (offset/MINCHUNK) * MINCHUNK;
       req_off_len = offset - req_off_st;
+
+      write_len += req_off_len;
 
       // Read req_off_st to req_off_end from hash blocks
 
@@ -999,17 +1004,17 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
     memcpy(write_buf+(offset%MINCHUNK), buf, size);
     read += size;
+    write_len += size;
 
     if(((offset+size)%MINCHUNK) != 0) {
       // Overwrite of size bytes from offset (or) insertion/overwrite
       // on the endblock of the file
 
       req_size_st = offset+size;
-      req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
-
-      if(req_size_len > stbuf.st_size) {
-        req_size_len = stbuf.st_size;
-      }
+      if(stbuf.st_size > req_size_st)
+        req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
+      else
+        req_size_len = req_size_st;
 
       req_size_len = req_size_len - req_size_st;
       if(req_size_len < 0) {
@@ -1017,6 +1022,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       }
       //meta_f_readcnt = STAT_LEN;
       //hash_off = STAT_LEN;
+
+      write_len += req_size_len;
 
       while(meta_f_readcnt < meta_stbuf.st_size) {
 
@@ -1070,18 +1077,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       }
     }
 
-    if((offset+size)%MINCHUNK != 0) {
-      req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK) - ((offset/MINCHUNK)*MINCHUNK);
-
-      if(req_size_len > stbuf.st_size) {
-        req_size_len = stbuf.st_size;
-      }
-
-    } else {
-      req_size_len = offset+size;
-    }
-
-    res = internal_write(ab_path, write_buf, req_size_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
+    res = internal_write(ab_path, write_buf, write_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
     if(res < 0) {
       dedupe_fs_unlock(ab_path, fi->fh);
       ABORT;

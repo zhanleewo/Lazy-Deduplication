@@ -24,7 +24,7 @@ void updates_handler(const char *path) {
   int res = 0, no_updates = 0;
   int read = 0, toread = 0, todedupe = 0;
 
-  int old_data_len = 0, new_data_endoff = 0;
+  off_t old_data_len = 0, new_data_endoff = 0;
 
   size_t r_cnt = 0, meta_f_readcnt = 0;
   size_t tot_file_read = 0;
@@ -110,6 +110,7 @@ void updates_handler(const char *path) {
 
   internal_release(path, &bitmask_fi);
 
+  ab_fi.flags = O_RDONLY;
   res = internal_open(ab_f_path, &ab_fi);
   if(res < 0) {
     ABORT;
@@ -149,6 +150,7 @@ void updates_handler(const char *path) {
     ABORT;
   }
 
+  meta_fi.flags = O_RDONLY;
   res = internal_open(meta_path, &meta_fi);
   if(res < 0) {
     ABORT;
@@ -324,7 +326,10 @@ void updates_handler(const char *path) {
 
   internal_release(meta_path, &meta_fi);
 
-  internal_rename(new_meta_path, meta_path);
+  res = internal_rename(new_meta_path, meta_path);
+  if(res < 0) {
+    ABORT;
+  }
 
   dedupe_fs_unlock(ab_f_path, ab_fi.fh);
   internal_release(ab_f_path, &ab_fi);
