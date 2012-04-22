@@ -79,7 +79,7 @@ unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int s
   return hash_current;
 }
 
-char* copy_substring(char *str, char *s, unsigned long long int start,unsigned long long int end)
+char* copy_substring(char *str, char *s, off_t start, off_t end)
 {
   int i = 0;
 

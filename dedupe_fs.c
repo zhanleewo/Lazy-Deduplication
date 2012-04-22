@@ -689,6 +689,9 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 #endif
 
   dedupe_fs_metadata_path(meta_path, path);
+  dedupe_fs_filestore_path(ab_path, path);
+
+  dedupe_fs_lock(ab_path, fi->fh);
 
   res = internal_getattr(meta_path, &meta_stbuf);
 
@@ -698,6 +701,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     meta_fi.flags = O_RDONLY;
     res = internal_open(meta_path, &meta_fi);
     if(res < 0) {
+      dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
 
@@ -712,9 +716,9 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
   } else {
 
-    dedupe_fs_filestore_path(ab_path, path);
     res = internal_getattr(ab_path, &stbuf);
     if(res < 0) {
+      dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
   }
@@ -737,7 +741,6 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
     printf("toread [%ld] read [%d] req_off [%lld] block_num [%lld]\n", toread, read, req_off, block_num);
 
-    dedupe_fs_lock(ab_path, fi->fh);
     if(bitmask[block_num/32] & (1<<(block_num%32))) {
  
       /* Requested block is present in the filestore */
@@ -749,23 +752,18 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
         hash_read = MINCHUNK;
       }
  
-      dedupe_fs_filestore_path(ab_path, path);
       r_cnt = internal_read(ab_path, buf+read, hash_read, req_off, fi, TRUE);
       if(r_cnt <= 0) {
         dedupe_fs_unlock(ab_path, fi->fh);
         return r_cnt;
       }
  
-      dedupe_fs_unlock(ab_path, fi->fh);
-
       toread -= r_cnt;
       read += r_cnt;
       req_off += r_cnt;
  
     } else {
  
-      dedupe_fs_unlock(ab_path, fi->fh);
-
       if(toread < MINCHUNK)
         hash_read = toread;
       else 
@@ -778,6 +776,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
         memset(hash_line, 0, OFF_HASH_LEN);
         res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
         if(res <= 0) {
+          dedupe_fs_unlock(ab_path, fi->fh);
           return res;
         }
   
@@ -804,11 +803,13 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   
           r_cnt = internal_read(srchstr, buf+read, hash_read, req_off-st_off, &hash_fi, FALSE);
           if(r_cnt <= 0) {
+            dedupe_fs_unlock(ab_path, fi->fh);
             return read;
           }
   
           res = internal_release(srchstr, &hash_fi);
           if(res < 0) {
+            dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
   
@@ -839,6 +840,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     wr_fi.flags = O_RDWR;
     res = internal_open(meta_path, &wr_fi);
     if(res < 0) {
+      dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
  
@@ -848,11 +850,14 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &wr_fi, FALSE);
     if(res < 0) {
       internal_release(meta_path, &wr_fi);
+      dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
  
     internal_release(meta_path, &wr_fi);
   }
+
+  dedupe_fs_unlock(ab_path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -897,6 +902,10 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
   printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
 
   dedupe_fs_metadata_path(meta_path, path);
+
+  dedupe_fs_filestore_path(ab_path, path);
+
+  dedupe_fs_lock(ab_path, fi->fh);
 
   res = internal_getattr(meta_path, &meta_stbuf);
 
@@ -1072,10 +1081,6 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       req_size_len = offset+size;
     }
 
-    dedupe_fs_filestore_path(ab_path, path);
-
-    dedupe_fs_lock(ab_path, fi->fh);
-
     res = internal_write(ab_path, write_buf, req_size_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
     if(res < 0) {
       dedupe_fs_unlock(ab_path, fi->fh);
@@ -1085,15 +1090,9 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     block_num = offset / MINCHUNK;
     bitmask[block_num/32] |= 1<<(block_num%32);
 
-    dedupe_fs_unlock(ab_path, fi->fh);
-
   } else {
 
     printf("First time write\n");
-
-    dedupe_fs_filestore_path(ab_path, path);
-
-    dedupe_fs_lock(ab_path, fi->fh);
 
     memcpy(write_buf+(offset%MINCHUNK), buf, size);
 
@@ -1106,8 +1105,9 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     block_num = offset / MINCHUNK;
     bitmask[block_num/32] |= 1<<(block_num%32);
 
-    dedupe_fs_unlock(ab_path, fi->fh);
   }
+
+  dedupe_fs_unlock(ab_path, fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

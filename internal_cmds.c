@@ -148,14 +148,6 @@ int internal_open(const char *path, struct fuse_file_info *fi) {
 
   fi->fh = fd;
 
-  /*if(FAILED == flock(fi->fh, LOCK_EX)) {
-    sprintf(out_buf, "[%s] LOCK on [%s] failed error [%d]\n",
-        __FUNCTION__, path, errno);
-    WR_2_STDOUT;
-  }
-
-  fi->lock_owner = gettid();*/
-
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
@@ -178,6 +170,8 @@ int internal_getattr(const char *path, struct stat *stbuf) {
 
   res = lstat(path, stbuf);
   if(FAILED == res) {
+    sprintf(out_buf, "[%s] lstat failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
     res = -errno;
   }
 
@@ -225,8 +219,11 @@ int internal_rmdir(const char *path) {
 #endif
 
   res = rmdir(path);
-  if(FAILED == res)
+  if(FAILED == res) {
+    sprintf(out_buf, "[%s] rmdir failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
     res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -338,16 +335,32 @@ int internal_release(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  /*if(gettid() == fi->lock_owner) {
-    fi->lock_owner = 0;
-    if(FAILED == flock(fi->fh, LOCK_UN)) {
-      sprintf(out_buf, "[%s] flock UNLOCK failed on [%s] errno [%d]\n", __FUNCTION__, path, errno);
-      WR_2_STDOUT;
-      return -errno;
-    }
-  }*/
-
   res = close(fi->fh);
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  return res;
+}
+
+int internal_rename(const char *path, const char *newpath) {
+
+  int res = 0;
+  char out_buf[BUF_LEN] = {0};
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  res = rename(path, newpath);
+  if(res < 0) {
+    sprintf(out_buf, "[%s] rename failed from [%s] to [%s]", __FUNCTION__, path, newpath);
+    perror(out_buf);
+    res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -367,8 +380,11 @@ int internal_unlink(const char *path) {
 #endif
 
   res = unlink(path);
-  if (res < 0)
+  if (res < 0) {
+    sprintf(out_buf, "[%s] unlink failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
     res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -390,7 +406,7 @@ int internal_truncate(const char *path, off_t newsize) {
 
   res = truncate(path, newsize);
   if(FAILED == res) {
-    sprintf(out_buf, "[%s] truncate failed on [%s] for [%ld]", __FUNCTION__, path, newsize);
+    sprintf(out_buf, "[%s] truncate failed on [%s] for [%ld] size", __FUNCTION__, path, newsize);
     perror(out_buf);
     res = -errno;
     return res;

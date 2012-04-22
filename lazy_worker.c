@@ -21,13 +21,14 @@ extern int internal_release(const char *, struct fuse_file_info *);
 void updates_handler(const char *path) {
 
   int i = 0, j = 0;
-  int res = 0, read = 0;
-  int toread = 0, todedupe = 0;
+  int res = 0, no_updates = 0;
+  int read = 0, toread = 0, todedupe = 0;
 
   int old_data_len = 0, new_data_endoff = 0;
 
   size_t r_cnt = 0, meta_f_readcnt = 0;
   size_t tot_file_read = 0;
+  size_t new_file_size = 0;
 
   off_t st_hash_off = 0, end_hash_off = 0;
   off_t st_new_off = 0, end_new_off = 0;
@@ -44,6 +45,7 @@ void updates_handler(const char *path) {
   char hash_line[OFF_HASH_LEN] = {0};
   char new_hash_line[OFF_HASH_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
+  char new_stat_buf[STAT_LEN] = {0};
   char out_buf[BUF_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
   char srchstr[MAX_PATH_LEN] = {0};
@@ -52,15 +54,20 @@ void updates_handler(const char *path) {
   char ab_f_path[MAX_PATH_LEN] = {0};
   char data_buf[MAXCHUNK+MINCHUNK] = {0};
   char old_data_buf[MAXCHUNK] = {0};
+  char filechunk[MAXCHUNK] = {0};
   char new_sha1[HEXA_HASH_LEN] = {0};
 
   unsigned int *btmsk = NULL;
 
-  struct stat meta_stbuf, ab_stbuf;
+  struct stat meta_stbuf = {0};
+  struct stat metadata_stbuf = {0};
+  struct stat ab_f_stbuf = {0};
 
-  struct fuse_file_info bitmask_fi;
-  struct fuse_file_info new_meta_fi, meta_fi;
-  struct fuse_file_info hash_fi, ab_fi;
+  struct fuse_file_info bitmask_fi = {0};
+  struct fuse_file_info new_meta_fi = {0};
+  struct fuse_file_info meta_fi = {0};
+  struct fuse_file_info hash_fi = {0};
+  struct fuse_file_info ab_fi = {0};
 
   dedupe_fs_filestore_path(ab_path, path);
   dedupe_fs_metadata_path(meta_path, path);
@@ -103,6 +110,40 @@ void updates_handler(const char *path) {
 
   internal_release(path, &bitmask_fi);
 
+  res = internal_open(ab_f_path, &ab_fi);
+  if(res < 0) {
+    ABORT;
+  }
+
+  dedupe_fs_lock(ab_f_path, ab_fi.fh);
+
+  no_updates = 0;
+
+  for(i = 0 ; i < NUM_BITMASK_WORDS ; i++) {
+    if(btmsk[i] > 0) {
+      break;
+    } else {
+      no_updates++;
+    }
+  }
+
+  if(no_updates == NUM_BITMASK_WORDS) {
+
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
+
+    res = munmap(btmsk, BITMASK_LEN);
+    if(FAILED == res) {
+      ABORT;
+    }
+    return;
+  }
+
+  res = internal_getattr(ab_f_path, &ab_f_stbuf);
+  if(res < 0) {
+    ABORT;
+  }
+
   res = internal_getattr(meta_path, &meta_stbuf);
   if(res < 0) {
     ABORT;
@@ -119,14 +160,9 @@ void updates_handler(const char *path) {
     ABORT;
   }
 
-  char2stbuf(stat_buf, &ab_stbuf);
+  char2stbuf(stat_buf, &metadata_stbuf);
 
-  res = internal_open(ab_f_path, &ab_fi);
-  if(res < 0) {
-    ABORT;
-  }
-
-  res = internal_create(new_meta_path, 0755, &new_meta_fi);
+  res = internal_create(new_meta_path, 0600, &new_meta_fi);
   if(res < 0) {
     ABORT;
   }
@@ -142,24 +178,28 @@ void updates_handler(const char *path) {
 
     if(read-old_data_len > 0) {
       memcpy(data_buf, old_data_buf, read-old_data_len);
-      read -= old_data_len;
     }
+
+    read -= old_data_len;
 
     while(read < MAXCHUNK) {
 
       if(btmsk[i/32] & (1<<(i%32))) {
 
-        res = internal_read(ab_f_path, data_buf+read, MINCHUNK, cur_block_off, &ab_fi, FALSE);
+        res = internal_read(ab_f_path, data_buf+read, MINCHUNK, cur_block_off, &ab_fi, TRUE);
         if(res <= 0) {
           ABORT;
         }
+
         read += res;
         tot_file_read += res;
         cur_block_off += res;
 
+        btmsk[1/32] &= ~(1<<(i%32));
+
       } else {
 
-        if(tot_file_read >= ab_stbuf.st_size) {
+        if(tot_file_read >= metadata_stbuf.st_size) {
           i += 1;
           break;
         }
@@ -198,7 +238,7 @@ void updates_handler(const char *path) {
             if(res < 0) {
               ABORT;
             }
-            
+
             r_cnt = internal_read(srchstr, data_buf+read, toread, cur_block_off-st_hash_off, &hash_fi, FALSE);
             if(r_cnt < 0) {
               ABORT;
@@ -236,6 +276,9 @@ void updates_handler(const char *path) {
     if(read > 0) {
       dedupe_data_buf(data_buf, &new_data_endoff, todedupe, new_sha1);
 
+      copy_substring(data_buf, filechunk, (off_t)0, new_data_endoff);
+      create_chunkfile(filechunk, new_sha1, new_data_endoff+1);
+
       old_data_len = new_data_endoff+1;
       if(read-old_data_len > 0) {
         memcpy(old_data_buf, data_buf+old_data_len, read-old_data_len);
@@ -249,6 +292,7 @@ void updates_handler(const char *path) {
       memset(new_hash_line, 0, OFF_HASH_LEN);
       snprintf(new_hash_line, OFF_HASH_LEN, "%lld:%lld:%s\n", st_new_off, end_new_off, new_sha1);
       internal_write(new_meta_path, new_hash_line, OFF_HASH_LEN, new_meta_off, &new_meta_fi, FALSE);
+      new_file_size += end_new_off-st_new_off+1;
 
       new_meta_off += OFF_HASH_LEN;
 
@@ -259,14 +303,36 @@ void updates_handler(const char *path) {
     }
   }
 
-  res = munmap(btmsk, BITMASK_LEN);
-  if(FAILED == res) {
-    ABORT;
-  }
+  /* Change the stat structure of the modified file */
+  ab_f_stbuf.st_dev = metadata_stbuf.st_dev;
+  ab_f_stbuf.st_ino = metadata_stbuf.st_ino;
+  ab_f_stbuf.st_mode = metadata_stbuf.st_mode;
+  ab_f_stbuf.st_nlink = metadata_stbuf.st_nlink;
+  ab_f_stbuf.st_uid = metadata_stbuf.st_uid;
+  ab_f_stbuf.st_gid = metadata_stbuf.st_gid;
+  ab_f_stbuf.st_rdev = metadata_stbuf.st_rdev;
+  ab_f_stbuf.st_size = new_file_size;
+  ab_f_stbuf.st_blksize = metadata_stbuf.st_blksize;
+  ab_f_stbuf.st_blocks = metadata_stbuf.st_blocks;
+
+  memset(new_stat_buf, STAT_LEN, 0);
+  stbuf2char(new_stat_buf, &ab_f_stbuf);
+
+  internal_write(new_meta_path, new_stat_buf, STAT_LEN, 0, &new_meta_fi, FALSE);
 
   internal_release(new_meta_path, &new_meta_fi);
 
   internal_release(meta_path, &meta_fi);
+
+  internal_rename(new_meta_path, meta_path);
+
+  dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+  internal_release(ab_f_path, &ab_fi);
+
+  res = munmap(btmsk, BITMASK_LEN);
+  if(FAILED == res) {
+    ABORT;
+  }
 }
 
 void process_initial_file_store(char *path) {
