@@ -404,6 +404,7 @@ int internal_unlink_hash_block(const char *sha1) {
   int res=0,nlinks_num=0,isempty,foldnum=0;
   char out_buf[BUF_LEN] = {0};
   char dir_srchstr[MAX_PATH_LEN] = {0};
+  char remove_path[MAX_PATH_LEN] = {0};
   char file_chunk_path[MAX_PATH_LEN] = {0};
   char nlinks_path[MAX_PATH_LEN] = {0};
 
@@ -478,21 +479,44 @@ int internal_unlink_hash_block(const char *sha1) {
 	  exit(errno);
       }
      
+      memset(remove_path,'\0', sizeof(remove_path));
 
-      for(foldnum =0; foldnum < 3; foldnum++)
-      {
-      strcat(dir_srchstr,"/../");
-      isempty = internal_isdirempty(dir_srchstr,&dir_fi);
+      strncpy(remove_path,dir_srchstr,17);
+      remove_path[17]='\0';
+      isempty = internal_isdirempty(remove_path,&dir_fi);
       if(isempty == TRUE)  {
           res = internal_rmdir(dir_srchstr);
           if(res < 0) {
 	     exit(errno);
       }
       }
-      else {
-	 break;
+     
+      memset(remove_path,'\0', sizeof(remove_path));
+
+      strncpy(remove_path,dir_srchstr,8);
+      remove_path[8]='\0';
+      isempty = internal_isdirempty(remove_path,&dir_fi);
+      if(isempty == TRUE)  {
+          res = internal_rmdir(dir_srchstr);
+          if(res < 0) {
+             exit(errno);
       }
       }
+
+      memset(remove_path,'\0', sizeof(remove_path));
+
+      strncpy(remove_path,dir_srchstr,3);
+      remove_path[3]='\0';
+      isempty = internal_isdirempty(remove_path,&dir_fi);
+      if(isempty == TRUE)  {
+          res = internal_rmdir(dir_srchstr);
+          if(res < 0) {
+             exit(errno);
+      }
+      }
+ 	
+
+
 
    }    
      
