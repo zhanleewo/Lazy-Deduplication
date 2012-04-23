@@ -23,7 +23,7 @@ void precompute_RM();
 
 int pattern_match(unsigned long long int rkhash);
 
-unsigned long long int Rabin_Karp_Hash(char substring[], unsigned long long int start_index, unsigned long long int end_index, int newchunk, unsigned long long int hash_prev);
+unsigned long long int Rabin_Karp_Hash(char substring[], off_t start_index, off_t end_index, int newchunk, unsigned long long int hash_prev);
 
 char * copy_substring(char *str, char *s, off_t start, off_t end);
 

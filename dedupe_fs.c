@@ -904,9 +904,11 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
 
-  if(fi->flags & O_CREAT == O_CREAT) {
-    printf("O_CREAT flag set\n");
-  }
+  /*
+     Modify the file stats here, esp the st_size
+     Handle the case where application called a pwrite,
+     on the offset above the existing offset
+   */
 
   dedupe_fs_metadata_path(meta_path, path);
 
@@ -916,7 +918,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   res = internal_getattr(meta_path, &meta_stbuf);
 
-  if(res != -ENOENT) {
+  if(fi->flags & O_CREAT != O_CREAT && res != -ENOENT) {
 
     printf("not a first time\n");
 
@@ -1203,6 +1205,11 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     res = -EINVAL;
     return res;
   }
+
+  /* 
+     File editors call truncate prior to updating the file. 
+     On truncate, set the metadata file size to 0 (modify other stat structs too)
+   */
 
   dedupe_fs_filestore_path(ab_path, path);
 

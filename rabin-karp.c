@@ -55,8 +55,7 @@ unsigned long long int hash_48(char *str, unsigned long long int st_indx) {
   return hash_current;
 }
 
-
-unsigned long long int Rabin_Karp_Hash(char *substring, unsigned long long int start_index, unsigned long long int end_index, int newchunk, unsigned long long int hash_prev)
+unsigned long long int Rabin_Karp_Hash(char *substring, off_t start_index, off_t end_index, int newchunk, unsigned long long int hash_prev)
 {
   int i = 0;
   unsigned long long int hash_current = 0;
@@ -260,7 +259,7 @@ void create_chunkfile(char *filechunk, char *sha1, size_t len) {
 
 void dedupe_data_buf(const char *databuf, int *end_off, int databuf_len, char *new_sha1) {
 
-  unsigned long long int rkhash = 0, pos = 0;
+  unsigned long long int rkhash = 0;
   off_t stblk = 0, endblk = 0;
 
   int newchunk = 0;
@@ -268,10 +267,10 @@ void dedupe_data_buf(const char *databuf, int *end_off, int databuf_len, char *n
   char *sha1_out = NULL;
 
   if(databuf_len >= MINCHUNK) {
-    for(endblk = MINCHUNK-1 ; endblk < databuf_len ; endblk++, pos++, newchunk++) {
+    for(endblk = MINCHUNK-1 ; endblk < databuf_len ; endblk++, stblk++, newchunk++) {
 
       if(newchunk == 0) {
-        rkhash = Rabin_Karp_Hash(databuf, pos, endblk, newchunk, rkhash);
+        rkhash = Rabin_Karp_Hash(databuf, stblk, endblk, newchunk, rkhash);
       } else {
         rkhash = Rabin_Karp_Hash(databuf, endblk-MAGIC_H_LEN, endblk, newchunk, rkhash);
       }
@@ -299,10 +298,10 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   int block_num = 0, newchunk = 0;
 
   long long int res = 0;
-  unsigned long long int nbytes = 0, old_data_len = 0, pos = 0;
+  unsigned long long int nbytes = 0, old_data_len = 0;
   unsigned long long int rkhash = 0;
 
-  off_t stblk = 0, endblk = 0;
+  off_t stblk = 0, endblk = 0, pos = 0;
   off_t read_off = 0, write_off = 0, st_off = -1;
 
   char *sha1_out = NULL;
