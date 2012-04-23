@@ -400,19 +400,6 @@ int internal_unlink(const char *path) {
   return res;
 }
 
-/*
-internal_unlink_hash_block() 
-
-1. call create_dir_search_str() to create the hash_path
-2. dedupe_fs_lock() on nlinks file
-3. read the count in the nlinks file and decrement it.
-4. if count is NOT 0 release the lock dedupe_fs_unlock()
-5. else delete the chunk; 
-6. release the lock on nlinks file; delete the dir and 
-7. recursively check ../ and see if it can be deleted
-8. return
-*/
-
 int internal_unlink_hash_block(const char *sha1) {
   int res=0,nlinks_num=0,isempty,foldnum=0;
   char out_buf[BUF_LEN] = {0};
@@ -462,7 +449,7 @@ int internal_unlink_hash_block(const char *sha1) {
       exit(errno);
     }
 
-    if(nlinks_num != FALSE) {
+    if(nlinks_num <= FALSE) {
       dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
       res = internal_release(nlinks_path, &nlinks_fi);
       if(res < 0) {
@@ -494,7 +481,7 @@ int internal_unlink_hash_block(const char *sha1) {
 
       for(foldnum =0; foldnum < 3; foldnum++)
       {
-      strcat(dir_srchstr,"../");
+      strcat(dir_srchstr,"/../");
       isempty = internal_isdirempty(dir_srchstr,&dir_fi);
       if(isempty == TRUE)  {
           res = internal_rmdir(dir_srchstr);
@@ -514,7 +501,7 @@ int internal_unlink_hash_block(const char *sha1) {
     WR_2_STDOUT;
   #endif`
   
-  return res;
+  return SUCCESS;
 
 }
 
