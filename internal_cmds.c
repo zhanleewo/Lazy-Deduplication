@@ -1,4 +1,3 @@
-#include "dedupe_fs.h"
 #include "internal_cmds.h"
 #include "rabin-karp.h"
 
@@ -401,7 +400,7 @@ int internal_unlink(const char *path) {
 }
 
 int internal_unlink_hash_block(const char *sha1) {
-  int res=0,nlinks_num=0,isempty,foldnum=0;
+  int res=0,nlinks_num=0,isempty=0;
   char out_buf[BUF_LEN] = {0};
   char dir_srchstr[MAX_PATH_LEN] = {0};
   char remove_path[MAX_PATH_LEN] = {0};
@@ -479,10 +478,10 @@ int internal_unlink_hash_block(const char *sha1) {
 	  exit(errno);
       }
      
-      memset(remove_path,'\0', sizeof(remove_path));
+      memset(remove_path,'\0', MAX_PATH_LEN);
 
-      strncpy(remove_path,dir_srchstr,17);
-      remove_path[17]='\0';
+      strncpy(remove_path,dir_srchstr,16);
+      remove_path[16]='\0';
       isempty = internal_isdirempty(remove_path,&dir_fi);
       if(isempty == TRUE)  {
           res = internal_rmdir(dir_srchstr);
@@ -490,11 +489,18 @@ int internal_unlink_hash_block(const char *sha1) {
 	     exit(errno);
       }
       }
+      else {
+        #ifdef DEBUG
+  	  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  	  WR_2_STDOUT;
+	#endif
+	return SUCCESS;
+      }
      
-      memset(remove_path,'\0', sizeof(remove_path));
+      memset(remove_path,'\0', MAX_PATH_LEN);
 
-      strncpy(remove_path,dir_srchstr,8);
-      remove_path[8]='\0';
+      strncpy(remove_path,dir_srchstr,7);
+      remove_path[7]='\0';
       isempty = internal_isdirempty(remove_path,&dir_fi);
       if(isempty == TRUE)  {
           res = internal_rmdir(dir_srchstr);
@@ -502,11 +508,18 @@ int internal_unlink_hash_block(const char *sha1) {
              exit(errno);
       }
       }
+      else {
+      #ifdef DEBUG
+	 sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+ 	 WR_2_STDOUT;
+      #endif
+      return SUCCESS;
+      }
 
-      memset(remove_path,'\0', sizeof(remove_path));
+      memset(remove_path,'\0', MAX_PATH_LEN);
 
-      strncpy(remove_path,dir_srchstr,3);
-      remove_path[3]='\0';
+      strncpy(remove_path,dir_srchstr,2);
+      remove_path[2]='\0';
       isempty = internal_isdirempty(remove_path,&dir_fi);
       if(isempty == TRUE)  {
           res = internal_rmdir(dir_srchstr);
@@ -514,9 +527,6 @@ int internal_unlink_hash_block(const char *sha1) {
              exit(errno);
       }
       }
- 	
-
-
 
    }    
      
@@ -613,13 +623,13 @@ int internal_isdirempty(const char *path,struct fuse_file_info *fi) {
       res = -errno;
     }
      
+    #ifdef DEBUG
+      sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+      WR_2_STDOUT;
+    #endif
+
     if (n <= 2) 
         return TRUE;
     else
         return FALSE;
-#ifdef DEBUG
-  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  WR_2_STDOUT;
-#endif
-
 }
