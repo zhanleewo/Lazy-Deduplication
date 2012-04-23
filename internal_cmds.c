@@ -1,4 +1,4 @@
-#include "internal_cmds.h"
+//#include "internal_cmds.h"
 #include "rabin-karp.h"
 
 int internal_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
@@ -92,8 +92,7 @@ int internal_opendir(const char *path, struct fuse_file_info *fi) {
   return res;
 }
 
-int internal_readdir(const char *path, void *buf,
-    fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+int internal_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
 
   int res = 0;
 
@@ -395,7 +394,7 @@ int internal_unlink(const char *path) {
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
-#endif`
+#endif
   return res;
 }
 
@@ -406,7 +405,6 @@ int internal_unlink_hash_block(const char *sha1) {
   char remove_path[MAX_PATH_LEN] = {0};
   char file_chunk_path[MAX_PATH_LEN] = {0};
   char nlinks_path[MAX_PATH_LEN] = {0};
-
   char nlinks_cnt[NLINKS_WIDTH] = {0};
 
   struct fuse_file_info nlinks_fi,dir_fi;
@@ -527,13 +525,15 @@ int internal_unlink_hash_block(const char *sha1) {
              exit(errno);
       }
       }
+      else
+      {}
 
-   }    
-     
+      }
+
   #ifdef DEBUG
     sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
     WR_2_STDOUT;
-  #endif`
+  #endif
   
   return SUCCESS;
 
@@ -588,7 +588,6 @@ int internal_releasedir(const char *path, struct fuse_file_info *fi) {
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
-
   return SUCCESS;
 }
 
