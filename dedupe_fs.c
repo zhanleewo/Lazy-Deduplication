@@ -904,6 +904,10 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
 
+  if(fi->flags & O_CREAT == O_CREAT) {
+    printf("O_CREAT flag set\n");
+  }
+
   dedupe_fs_metadata_path(meta_path, path);
 
   dedupe_fs_filestore_path(ab_path, path);
@@ -1011,10 +1015,17 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       // on the endblock of the file
 
       req_size_st = offset+size;
-      if(stbuf.st_size > req_size_st)
-        req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
-      else
+      if(stbuf.st_size > req_size_st) {
+        if((((offset+size)/MINCHUNK + 1) * MINCHUNK) < stbuf.st_size) {
+          req_size_len = (((offset+size)/MINCHUNK + 1) * MINCHUNK);
+        }
+        else {
+          req_size_len = stbuf.st_size;
+        }
+      }
+      else {
         req_size_len = req_size_st;
+      }
 
       req_size_len = req_size_len - req_size_st;
       if(req_size_len < 0) {
@@ -1195,7 +1206,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  res = truncate(ab_path, newsize);
+  res = internal_truncate(ab_path, newsize);
   if(SUCCESS == res) {
     return res;
   }

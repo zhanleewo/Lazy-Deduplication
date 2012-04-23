@@ -279,6 +279,7 @@ void updates_handler(const char *path) {
       dedupe_data_buf(data_buf, &new_data_endoff, todedupe, new_sha1);
 
       copy_substring(data_buf, filechunk, (off_t)0, new_data_endoff);
+      /* If chunk already exists don't do anything */
       create_chunkfile(filechunk, new_sha1, new_data_endoff+1);
 
       old_data_len = new_data_endoff+1;
@@ -330,6 +331,8 @@ void updates_handler(const char *path) {
   if(res < 0) {
     ABORT;
   }
+
+  /* Truncate the file in the filestore */
 
   dedupe_fs_unlock(ab_f_path, ab_fi.fh);
   internal_release(ab_f_path, &ab_fi);
