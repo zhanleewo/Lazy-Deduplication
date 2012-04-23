@@ -1,5 +1,6 @@
 #include "dedupe_fs.h"
 #include "internal_cmds.h"
+#include "rabin-karp.h"
 
 int internal_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
@@ -395,10 +396,128 @@ int internal_unlink(const char *path) {
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
-#endif
-
+#endif`
   return res;
 }
+
+/*
+internal_unlink_hash_block() 
+
+1. call create_dir_search_str() to create the hash_path
+2. dedupe_fs_lock() on nlinks file
+3. read the count in the nlinks file and decrement it.
+4. if count is NOT 0 release the lock dedupe_fs_unlock()
+5. else delete the chunk; 
+6. release the lock on nlinks file; delete the dir and 
+7. recursively check ../ and see if it can be deleted
+8. return
+*/
+
+int internal_unlink_hash_block(const char *sha1) {
+  int res=0,nlinks_num=0,isempty,foldnum=0;
+  char out_buf[BUF_LEN] = {0};
+  char dir_srchstr[MAX_PATH_LEN] = {0};
+  char file_chunk_path[MAX_PATH_LEN] = {0};
+  char nlinks_path[MAX_PATH_LEN] = {0};
+
+  char nlinks_cnt[NLINKS_WIDTH] = {0};
+
+  struct fuse_file_info nlinks_fi,dir_fi;
+
+  #ifdef DEBUG
+    sprintf(out_buf,"[%s] entry\n", __FUNCTION__);
+    WR_2_STDOUT;	
+  #endif
+
+  create_dir_search_str(dir_srchstr, sha1);
+  
+  strcat(file_chunk_path,dir_srchstr);
+  strcat(file_chunk_path, "/");
+  strcat(file_chunk_path, sha1);
+
+  strcpy(nlinks_path, dir_srchstr);
+  strcat(nlinks_path, "/");
+  strcat(nlinks_path, "nlinks.txt");  
+ 
+  nlinks_fi.flags = O_RDWR;
+  res = internal_open(nlinks_path, &nlinks_fi);
+  if(res < 0) {
+      exit(errno);
+  }
+ 
+  dedupe_fs_lock(nlinks_path, nlinks_fi.fh); 
+ 
+  res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
+    if(res < 0) {
+      exit(errno);
+    }
+
+    sscanf(nlinks_cnt, "%d", &nlinks_num);
+    nlinks_num -= 1;
+
+    sprintf(nlinks_cnt, "%d", nlinks_num);
+
+    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
+    if(res < 0) {
+      exit(errno);
+    }
+
+    if(nlinks_num != FALSE) {
+      dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
+      res = internal_release(nlinks_path, &nlinks_fi);
+      if(res < 0) {
+          exit(errno);
+    }
+    }
+
+    else {
+      res = internal_unlink(file_chunk_path);
+      if(res < 0) {
+	  exit(errno);
+     }   
+
+      dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
+      res = internal_release(nlinks_path, &nlinks_fi);
+      if(res < 0) {
+          exit(errno);
+    }
+      res = internal_unlink(nlinks_path);
+      if(res < 0) {
+          exit(errno);
+      }     
+ 
+      res = internal_rmdir(dir_srchstr);
+      if(res < 0) {
+	  exit(errno);
+      }
+     
+
+      for(foldnum =0; foldnum < 3; foldnum++)
+      {
+      strcat(dir_srchstr,"../");
+      isempty = internal_isdirempty(dir_srchstr,&dir_fi);
+      if(isempty == TRUE)  {
+          res = internal_rmdir(dir_srchstr);
+          if(res < 0) {
+	     exit(errno);
+      }
+      }
+      else {
+	 break;
+      }
+      }
+
+   }    
+     
+  #ifdef DEBUG
+    sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+    WR_2_STDOUT;
+  #endif`
+  
+  return res;
+
+}
+
 
 int internal_truncate(const char *path, off_t newsize) {
 
@@ -450,4 +569,46 @@ int internal_releasedir(const char *path, struct fuse_file_info *fi) {
 #endif
 
   return SUCCESS;
+}
+
+int internal_isdirempty(const char *path,struct fuse_file_info *fi) {
+
+   int res =0,n=0;
+   char out_buf[BUF_LEN] = {0}; 
+   struct dirent *d;
+   DIR *dir;
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+  
+   res = internal_opendir(path,fi);
+   if(res < 0) {
+	exit(errno);
+   }
+
+    fi->fh = (intptr_t)dir;
+     
+    while ((d = readdir(fi->fh)) != NULL) {
+    if(++n > 2)
+      break;
+    }
+
+    res = closedir((DIR *)(intptr_t)fi->fh);
+    if(FAILED == res) {
+      sprintf(out_buf, "[%s] closedir failed on [%s]", __FUNCTION__, path);
+      perror(out_buf);
+      res = -errno;
+    }
+     
+    if (n <= 2) 
+        return TRUE;
+    else
+        return FALSE;
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
 }
