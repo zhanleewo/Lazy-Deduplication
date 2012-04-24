@@ -536,14 +536,94 @@ int internal_unlink_hash_block(const char *sha1) {
 
 }
 
-int internal_unlink_file(const char *path, struct fuse_file_info *fi) {
+int internal_unlink_file(const char *path) {
+
+  int res = 0,r_cnt=0,meta_f_readcnt=0;
+  char out_buf[BUF_LEN] = {0};
+  char stat_buf[STAT_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
+  char hash_line[OFF_HASH_LEN] = {0};
+  char bitmask_file_path[MAX_PATH_LEN] = {0};
+
+  struct stat stbuf, meta_stbuf;
+  struct fuse_file_info meta_fi;
+
+  off_t hash_off =0;
+  char *sha1,*saveptr,*st,*end;
+  sha1 = saveptr = st = end = NULL;
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
   
+  dedupe_fs_metadata_path(meta_path, path);
+  dedupe_fs_filestore_path(ab_path, path);
+  res = internal_getattr(meta_path, &meta_stbuf);
+
+  if(res != -ENOENT) {
+    meta_fi.flags = O_RDONLY;
+    res = internal_open(meta_path, &meta_fi);
+    if(res < 0) {
+      return res;
+  }
+  }
+
+  dedupe_fs_lock(meta_path,meta_fi.fh);
+
+  res = internal_read(meta_path,stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
+  if(res < 0) {
+     ABORT;
+  }
+  meta_f_readcnt += STAT_LEN;
+  char2stbuf(stat_buf, &stbuf);
+  hash_off = STAT_LEN;
   
-  
+  while(meta_f_readcnt < meta_stbuf.st_size) {
 
+        memset(hash_line, 0, OFF_HASH_LEN);
+        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
+        if(res < 0) {
+          return res;
+        }
 
+        st = strtok_r(hash_line, ":", &saveptr);
+        end = strtok_r(NULL, ":", &saveptr);
+        sha1 = strtok_r(NULL, ":", &saveptr);
+        sha1[strlen(sha1)-1] = '\0';
 
+        res = internal_unlink_hash_block(sha1);
+        if(res < 0) {
+           return res;
+        }
+	meta_f_readcnt += OFF_HASH_LEN;
+        hash_off += OFF_HASH_LEN;
+  }
 
+  dedupe_fs_unlock(meta_path,meta_fi.fh);
+  res = internal_release(meta_path, &meta_fi);
+  if(res < 0) {
+     ABORT;
+  }
+
+  res = internal_unlink(meta_path);
+  if(res < 0) {
+     return res;
+  }
+
+  dedupe_fs_filestore_path(bitmask_file_path, path);
+  strcat(bitmask_file_path, BITMASK_FILE);
+
+  res = internal_unlink(bitmask_file_path);
+  if(res < 0) {
+     return res;
+  }   
+
+#ifdef DEBUG
+   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+   WR_2_STDOUT;
+#endif
+   return SUCCESS;
 }
 
 int internal_truncate(const char *path, off_t newsize) {
