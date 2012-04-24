@@ -1,6 +1,3 @@
-//gcc -Wall `pkg-config fuse --cflags --libs` dedupe_fs.c -o dedupe_fs
-
-
 #define FUSE_USE_VERSION 26
 
 #include "dedupe_fs.h"
@@ -16,7 +13,7 @@ static unsigned int *bitmask = NULL;
 
 dedupe_globals globals;
 
-extern void *lazy_worker_thread(void *);
+ void *lazy_worker_thread(void *);
 extern void create_dir_search_str(char *, char *);
 extern char *sha1(char *, int);
 

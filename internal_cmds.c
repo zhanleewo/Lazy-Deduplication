@@ -1,4 +1,4 @@
-//#include "internal_cmds.h"
+#include "internal_cmds.h"
 #include "rabin-karp.h"
 
 int internal_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
@@ -398,6 +398,7 @@ int internal_unlink(const char *path) {
   return res;
 }
 
+
 int internal_unlink_hash_block(const char *sha1) {
   int res=0,nlinks_num=0,isempty=0;
   char out_buf[BUF_LEN] = {0};
@@ -525,20 +526,25 @@ int internal_unlink_hash_block(const char *sha1) {
              exit(errno);
       }
       }
-      else
-      {}
-
       }
 
   #ifdef DEBUG
     sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
     WR_2_STDOUT;
   #endif
-  
   return SUCCESS;
 
 }
 
+int internal_unlink_file(const char *path, struct fuse_file_info *fi) {
+  
+  
+  
+
+
+
+
+}
 
 int internal_truncate(const char *path, off_t newsize) {
 
