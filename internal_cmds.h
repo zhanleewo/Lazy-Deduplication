@@ -1,6 +1,8 @@
 #ifndef _INTERNAL_CMDS
 #define _INTERNAL_CMDS
 
+#include <fuse.h>
+
 int internal_opendir(const char *, struct fuse_file_info *);
 
 int internal_readdir(const char *, void *, fuse_fill_dir_t, off_t, struct fuse_file_info *);
@@ -22,6 +24,8 @@ int internal_read(const char *, char *, size_t, off_t, struct fuse_file_info *, 
 int internal_release(const char *, struct fuse_file_info *);
 
 int internal_unlink(const char *);
+
+int internal_unlink_file(const char *, struct fuse_file_info *);
 
 int internal_unlink_hash_block(const char *);
 
