@@ -611,6 +611,11 @@ int internal_unlink_file(const char *path) {
      return res;
   }
 
+  res = internal_unlink(ab_path);
+  if(res < 0) {
+     return res;
+  }
+
   dedupe_fs_filestore_path(bitmask_file_path, path);
   strcat(bitmask_file_path, BITMASK_FILE);
 
