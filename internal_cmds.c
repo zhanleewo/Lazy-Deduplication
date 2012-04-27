@@ -544,7 +544,7 @@ int internal_unlink_file(const char *path) {
   char meta_path[MAX_PATH_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char hash_line[OFF_HASH_LEN] = {0};
-  char bitmask_file_path[MAX_PATH_LEN] = {0};
+  char bitmap_file_path[MAX_PATH_LEN] = {0};
 
   struct stat stbuf, meta_stbuf;
   struct fuse_file_info meta_fi;
@@ -611,10 +611,10 @@ int internal_unlink_file(const char *path) {
      return res;
   }
 
-  dedupe_fs_filestore_path(bitmask_file_path, path);
-  strcat(bitmask_file_path, BITMASK_FILE);
+  dedupe_fs_filestore_path(bitmap_file_path, path);
+  strcat(bitmap_file_path, BITMAP_FILE);
 
-  res = internal_unlink(bitmask_file_path);
+  res = internal_unlink(bitmap_file_path);
   if(res < 0) {
      return res;
   }   

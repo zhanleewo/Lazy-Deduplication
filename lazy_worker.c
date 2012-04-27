@@ -57,13 +57,13 @@ void updates_handler(const char *path) {
   char filechunk[MAXCHUNK] = {0};
   char new_sha1[HEXA_HASH_LEN] = {0};
 
-  unsigned int *btmsk = NULL;
+  unsigned int *btmap = NULL;
 
   struct stat meta_stbuf = {0};
   struct stat metadata_stbuf = {0};
   struct stat ab_f_stbuf = {0};
 
-  struct fuse_file_info bitmask_fi = {0};
+  struct fuse_file_info bitmap_fi = {0};
   struct fuse_file_info new_meta_fi = {0};
   struct fuse_file_info meta_fi = {0};
   struct fuse_file_info hash_fi = {0};
@@ -74,17 +74,17 @@ void updates_handler(const char *path) {
 
   strcpy(ab_f_path, ab_path);
 
-  new_f_path_end = strstr(ab_f_path, BITMASK_FILE);
+  new_f_path_end = strstr(ab_f_path, BITMAP_FILE);
   if(NULL == new_f_path_end) {
-    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMASK_FILE);
+    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMAP_FILE);
     WR_2_STDOUT;
     ABORT;
   }
   *new_f_path_end = NULL;
 
-  meta_f_path_end = strstr(meta_path, BITMASK_FILE);
+  meta_f_path_end = strstr(meta_path, BITMAP_FILE);
   if(NULL == meta_f_path_end) {
-    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMASK_FILE);
+    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMAP_FILE);
     WR_2_STDOUT;
     ABORT;
   }
@@ -93,22 +93,22 @@ void updates_handler(const char *path) {
   strcpy(new_meta_path, meta_path);
   strcat(new_meta_path, ".new_meta");
 
-  bitmask_fi.flags = O_RDWR;
-  res = internal_open(ab_path, &bitmask_fi);
+  bitmap_fi.flags = O_RDWR;
+  res = internal_open(ab_path, &bitmap_fi);
   if(res < 0) {
     ABORT;
   }
 
-  btmsk = (unsigned int *) mmap(NULL, BITMASK_LEN, 
-                  PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
-  if(btmsk == MAP_FAILED) {
+  btmap = (unsigned int *) mmap(NULL, BITMAP_LEN, 
+                  PROT_READ | PROT_WRITE, MAP_SHARED, bitmap_fi.fh, (off_t)0);
+  if(btmap == MAP_FAILED) {
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
     res = -errno;
     return res;
   }
 
-  internal_release(path, &bitmask_fi);
+  internal_release(path, &bitmap_fi);
 
   ab_fi.flags = O_RDONLY;
   res = internal_open(ab_f_path, &ab_fi);
@@ -120,20 +120,20 @@ void updates_handler(const char *path) {
 
   no_updates = 0;
 
-  for(i = 0 ; i < NUM_BITMASK_WORDS ; i++) {
-    if(btmsk[i] > 0) {
+  for(i = 0 ; i < NUM_BITMAP_WORDS ; i++) {
+    if(btmap[i] > 0) {
       break;
     } else {
       no_updates++;
     }
   }
 
-  if(no_updates == NUM_BITMASK_WORDS) {
+  if(no_updates == NUM_BITMAP_WORDS) {
 
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
 
-    res = munmap(btmsk, BITMASK_LEN);
+    res = munmap(btmap, BITMAP_LEN);
     if(FAILED == res) {
       ABORT;
     }
@@ -175,11 +175,11 @@ void updates_handler(const char *path) {
   // blocks which has been updated
 
   // TODO Add support for truncate and file block deletion.
-  // Store the size of the updated file as well in the bitmask file
+  // Store the size of the updated file as well in the bitmap file
   // Check this size before updation 
   // (-1 for pwrite (or) unmodified), other size value imply the actual size
 
-  while(i < NUM_BITMASK_WORDS) {
+  while(i < NUM_BITMAP_WORDS) {
 
     cur_block_off = i * MINCHUNK;
 
@@ -191,7 +191,7 @@ void updates_handler(const char *path) {
 
     while(read < MAXCHUNK) {
 
-      if(btmsk[i/32] & (1<<(i%32))) {
+      if(btmap[i/32] & (1<<(i%32))) {
 
         res = internal_read(ab_f_path, data_buf+read, MINCHUNK, cur_block_off, &ab_fi, TRUE);
         if(res <= 0) {
@@ -202,7 +202,7 @@ void updates_handler(const char *path) {
         tot_file_read += res;
         cur_block_off += res;
 
-        btmsk[1/32] &= ~(1<<(i%32));
+        btmap[1/32] &= ~(1<<(i%32));
 
       } else {
 
@@ -342,7 +342,7 @@ void updates_handler(const char *path) {
   dedupe_fs_unlock(ab_f_path, ab_fi.fh);
   internal_release(ab_f_path, &ab_fi);
 
-  res = munmap(btmsk, BITMASK_LEN);
+  res = munmap(btmap, BITMAP_LEN);
   if(FAILED == res) {
     ABORT;
   }
@@ -374,7 +374,7 @@ void process_initial_file_store(char *path) {
   char stat_buf[STAT_LEN] = {0};
 
   struct fuse_file_info fi, dir_fi;
-  struct fuse_file_info bitmask_fi;
+  struct fuse_file_info bitmap_fi;
   file_args f_args;
 
   dedupe_fs_filestore_path(ab_old_path, path);
@@ -428,7 +428,7 @@ void process_initial_file_store(char *path) {
       strcat(new_f_path, "/");
       strcat(new_f_path, de->d_name);
  
-      if((new_f_path_end = strstr(new_f_path, BITMASK_FILE)) != NULL) {
+      if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
 
         *new_f_path_end = '\0';
 

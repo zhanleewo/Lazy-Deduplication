@@ -310,11 +310,11 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   char temp_data[MAXCHUNK + 1] = {0};
   char filechunk[MAXCHUNK + 1] = {0};
   char meta_data[OFF_HASH_LEN] = {0};
-  char bitmask_file_path[MAX_PATH_LEN] = {0};
+  char bitmap_file_path[MAX_PATH_LEN] = {0};
 
-  unsigned int *btmsk = NULL;
+  unsigned int *btmap = NULL;
 
-  struct fuse_file_info fi, bitmask_fi;
+  struct fuse_file_info fi, bitmap_fi;
 
   nbytes = MAXCHUNK;
   write_off = f_args->offset;
@@ -325,24 +325,24 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     ABORT;
   }
 
-  strcpy(bitmask_file_path, filestore_path);
-  strcat(bitmask_file_path, BITMASK_FILE);
+  strcpy(bitmap_file_path, filestore_path);
+  strcat(bitmap_file_path, BITMAP_FILE);
 
-  bitmask_fi.flags = O_RDWR;
-  res = internal_open(bitmask_file_path, &bitmask_fi);
+  bitmap_fi.flags = O_RDWR;
+  res = internal_open(bitmap_file_path, &bitmap_fi);
   if(res < 0) {
     return res;
   }
 
-  btmsk = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
-  if(btmsk == MAP_FAILED) {
-    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
+  btmap = (unsigned int *) mmap(NULL, BITMAP_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmap_fi.fh, (off_t)0);
+  if(btmap == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_file_path);
     perror(out_buf);
     res = -errno;
     return res;
   }
 
-  internal_release(bitmask_file_path, &bitmask_fi);
+  internal_release(bitmap_file_path, &bitmap_fi);
 
   while(TRUE) {
 
@@ -363,12 +363,12 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       while(TRUE) {
         if(((block_num * MINCHUNK)+MINCHUNK) > read_off)
           break;
-        btmsk[block_num/32] &= ~(1<<(block_num%32));
+        btmap[block_num/32] &= ~(1<<(block_num%32));
         block_num += 1;
       }
 
       if(read_off == stbuf->st_size) {
-        btmsk[block_num/32] &= ~(1<<(block_num%32));
+        btmap[block_num/32] &= ~(1<<(block_num%32));
         block_num += 1;
       }
 
@@ -470,7 +470,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     }
   }
 
-  res = munmap(btmsk, BITMASK_LEN);
+  res = munmap(btmap, BITMAP_LEN);
   if(FAILED == res) {
     ABORT;
   }

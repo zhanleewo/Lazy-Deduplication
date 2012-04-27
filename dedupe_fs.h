@@ -21,9 +21,9 @@
 #include <pthread.h>
 #include <fuse.h>
 
-#define BITMASK_FILE "._bitmask"
-#define NUM_BITMASK_WORDS 2048
-#define BITMASK_LEN sizeof(int)*NUM_BITMASK_WORDS
+#define BITMAP_FILE "._bitmap"
+#define NUM_BITMAP_WORDS 2048
+#define BITMAP_LEN sizeof(int)*NUM_BITMASK_WORDS
 
 #define MAX_PATH_LEN 1024
 #define BUF_LEN 512

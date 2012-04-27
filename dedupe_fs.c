@@ -9,7 +9,7 @@ char *dedupe_metadata = "/tmp/dedupe_metadata";
 char *dedupe_hashes = "/tmp/dedupe_hashes";
 char *nlinks = "nlinks.txt";
 
-static unsigned int *bitmask = NULL;
+static unsigned int *bitmap = NULL;
 
 dedupe_globals globals;
 
@@ -231,7 +231,7 @@ static int dedupe_fs_readdir(
   }
 
   do {
-    if(NULL == strstr(de->d_name, BITMASK_FILE)) {
+    if(NULL == strstr(de->d_name, BITMAP_FILE)) {
       if(filler(buf, de->d_name, NULL, 0))
         res = -errno;
     }
@@ -605,9 +605,9 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   int res = 0;
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
-  char bitmask_file_path[MAX_PATH_LEN] = {0};
+  char bitmap_file_path[MAX_PATH_LEN] = {0};
 
-  struct fuse_file_info bitmask_fi;
+  struct fuse_file_info bitmap_fi;
 
   struct fuse_context *mycontext = fuse_get_context();
 
@@ -625,25 +625,25 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
     return res;
   }
 
-  dedupe_fs_filestore_path(bitmask_file_path, path);
-  strcat(bitmask_file_path, BITMASK_FILE);
+  dedupe_fs_filestore_path(bitmap_file_path, path);
+  strcat(bitmap_file_path, BITMAP_FILE);
 
-  bitmask_fi.flags = O_RDWR;
-  res = internal_open(bitmask_file_path, &bitmask_fi);
+  bitmap_fi.flags = O_RDWR;
+  res = internal_open(bitmap_file_path, &bitmap_fi);
   if(res < 0) {
     return res;
   }
 
-  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, 
-      PROT_READ | PROT_WRITE, MAP_SHARED, bitmask_fi.fh, (off_t)0);
-  if(bitmask == MAP_FAILED) {
-    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
+  bitmap = (unsigned int *) mmap(NULL, BITMAP_LEN, 
+      PROT_READ | PROT_WRITE, MAP_SHARED, bitmap_fi.fh, (off_t)0);
+  if(bitmap == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_file_path);
     perror(out_buf);
     res = -errno;
     return res;
   }
 
-  internal_release(bitmask_file_path, &bitmask_fi);
+  internal_release(bitmap_file_path, &bitmap_fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -738,7 +738,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
     printf("toread [%ld] read [%d] req_off [%lld] block_num [%lld]\n", toread, read, req_off, block_num);
 
-    if(bitmask[block_num/32] & (1<<(block_num%32))) {
+    if(bitmap[block_num/32] & (1<<(block_num%32))) {
  
       /* Requested block is present in the filestore */
       printf("chunk inside filestore\n");
@@ -1094,7 +1094,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     }
 
     block_num = offset / MINCHUNK;
-    bitmask[block_num/32] |= 1<<(block_num%32);
+    bitmap[block_num/32] |= 1<<(block_num%32);
 
   } else {
 
@@ -1109,7 +1109,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     }
 
     block_num = offset / MINCHUNK;
-    bitmask[block_num/32] |= 1<<(block_num%32);
+    bitmap[block_num/32] |= 1<<(block_num%32);
 
   }
 
@@ -1133,7 +1133,7 @@ static int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
-  res = munmap((void*)bitmask, BITMASK_LEN);
+  res = munmap((void*)bitmap, BITMAP_LEN);
   if(res < 0) {
     res = -errno;
     return res;
@@ -1381,9 +1381,9 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
-  char bitmask_file_path[MAX_PATH_LEN] = {0};
+  char bitmap_file_path[MAX_PATH_LEN] = {0};
 
-  struct fuse_file_info bitmask_fi;
+  struct fuse_file_info bitmap_fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -1397,34 +1397,34 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
     return res;
   }
 
-  dedupe_fs_filestore_path(bitmask_file_path, path);
-  strcat(bitmask_file_path, BITMASK_FILE);
+  dedupe_fs_filestore_path(bitmap_file_path, path);
+  strcat(bitmap_file_path, BITMAP_FILE);
 
-  res = internal_mknod(bitmask_file_path, mode, 0);
+  res = internal_mknod(bitmap_file_path, mode, 0);
   if(res < 0) {
     return res;
   }
 
-  bitmask_fi.flags = O_RDWR;
-  res = internal_open(bitmask_file_path, &bitmask_fi);
+  bitmap_fi.flags = O_RDWR;
+  res = internal_open(bitmap_file_path, &bitmap_fi);
   if(res < 0) {
     return res;
   }
 
-  res = internal_write(bitmask_file_path, "", 1, (off_t)BITMASK_LEN - 1, &bitmask_fi, FALSE);
+  res = internal_write(bitmap_file_path, "", 1, (off_t)BITMAP_LEN - 1, &bitmap_fi, FALSE);
   if(res < 0) {
     return res;
   }
 
-  bitmask = (unsigned int *) mmap(NULL, BITMASK_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, (int)bitmask_fi.fh, (off_t)0);
-  if(bitmask == MAP_FAILED) {
-    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmask_file_path);
+  bitmap = (unsigned int *) mmap(NULL, BITMAP_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, (int)bitmap_fi.fh, (off_t)0);
+  if(bitmap == MAP_FAILED) {
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_file_path);
     perror(out_buf);
     res = -errno;
     return res;
   }
 
-  internal_release(bitmask_file_path, &bitmask_fi);
+  internal_release(bitmap_file_path, &bitmap_fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
