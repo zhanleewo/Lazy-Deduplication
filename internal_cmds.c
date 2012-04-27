@@ -430,7 +430,7 @@ int internal_unlink_hash_block(const char *sha1) {
   nlinks_fi.flags = O_RDWR;
   res = internal_open(nlinks_path, &nlinks_fi);
   if(res < 0) {
-      exit(errno);
+    exit(errno);
   }
  
   dedupe_fs_lock(nlinks_path, nlinks_fi.fh); 
@@ -461,13 +461,13 @@ int internal_unlink_hash_block(const char *sha1) {
   else {
     res = internal_unlink(file_chunk_path);
     if(res < 0) {
-        exit(errno);
-   }   
+      exit(errno);
+   }
 
     dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
     res = internal_release(nlinks_path, &nlinks_fi);
     if(res < 0) {
-        exit(errno);
+      exit(errno);
     }
 
     res = internal_unlink(nlinks_path);
@@ -564,7 +564,7 @@ int internal_unlink_file(const char *path, int flag) {
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
-  
+
   dedupe_fs_metadata_path(meta_path, path);
   dedupe_fs_filestore_path(ab_path, path);
   res = internal_getattr(meta_path, &meta_stbuf);

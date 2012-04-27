@@ -110,15 +110,17 @@ void stbuf2char(char *stat_buf, struct stat *stbuf) {
 
 static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
-  int res = 0;
+  int res = 0, fsize = 0;
 
   char out_buf[BUF_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
   char new_path[MAX_PATH_LEN] = {0};
+  char bitmap_path[MAX_PATH_LEN] = {0};
+  char filesize[FILESIZE_LEN] = {0};
 
-  struct fuse_file_info fi;
+  struct fuse_file_info fi, bitmap_fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -126,7 +128,9 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 #endif
 
   dedupe_fs_metadata_path(meta_path, path);
+
   memset(stbuf, 0, sizeof(struct stat));
+
   res = internal_getattr(meta_path, stbuf);
   if(res < 0) {
     dedupe_fs_filestore_path(ab_path, path);
@@ -143,13 +147,29 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
     }
   } else {
     // Not a directory; should be a file
-    // Retrieve not-so-recent information 
-    // from dedupe database
-    fi.flags = O_RDONLY;
-    res = internal_open(meta_path, &fi);
+    // Retrieve recent information from database
+
+    dedupe_fs_filestore_path(bitmap_path, path);
+    strcat(bitmap_path, BITMAP_FILE);
+
+    bitmap_fi.flags = O_RDONLY;
+    res = internal_open(bitmap_path, &bitmap_fi);
     if(res < 0) {
     } else {
+
       memset(&stat_buf, 0, STAT_LEN);
+
+      res = internal_read(bitmap_path, filesize, FILESIZE_LEN, (off_t)(sizeof(int)*NUM_BITMAP_WORDS), &bitmap_fi, FALSE);
+      if(res < 0) {
+        ABORT;
+      }
+
+      fi.flags = O_RDONLY;
+      res = internal_open(meta_path, &fi);
+      if(res < 0) {
+        ABORT;
+      }
+
       res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
       if(res < 0) {
         // res contains the errno to return to libfuse
@@ -158,6 +178,13 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
         char2stbuf(stat_buf, stbuf);
       }
 
+      fsize = *(int *)filesize;
+
+      if(fsize != -1) {
+        stbuf->st_size = fsize;
+      }
+
+      internal_release(bitmap_path, &bitmap_fi);
       internal_release(meta_path, &fi);
     }
   }
@@ -1212,7 +1239,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
   /* 
      File editors call truncate prior to updating the file. 
-     On truncate, set the metadata file size to 0 (modify other stat structs too)
+     On truncate, set the bitmap entry's filesize to 0
    */
 
   dedupe_fs_filestore_path(ab_path, path);

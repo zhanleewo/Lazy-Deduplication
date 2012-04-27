@@ -38,6 +38,7 @@ void updates_handler(const char *path) {
 
   char *st = NULL, *end = NULL;
   char *new_f_path_end = NULL;
+  char *del_f_path_end = NULL;
   char *meta_f_path_end = NULL;
   char *sha1 = NULL, *saveptr = NULL;
 
@@ -47,6 +48,7 @@ void updates_handler(const char *path) {
   char new_stat_buf[STAT_LEN] = {0};
   char out_buf[BUF_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
+  char del_path[MAX_PATH_LEN] = {0};
   char srchstr[MAX_PATH_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char new_meta_path[MAX_PATH_LEN] = {0};
@@ -75,7 +77,7 @@ void updates_handler(const char *path) {
 
   new_f_path_end = strstr(ab_f_path, BITMAP_FILE);
   if(NULL == new_f_path_end) {
-    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMAP_FILE);
+    sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, ab_f_path, BITMAP_FILE);
     WR_2_STDOUT;
     ABORT;
   }
@@ -83,7 +85,7 @@ void updates_handler(const char *path) {
 
   meta_f_path_end = strstr(meta_path, BITMAP_FILE);
   if(NULL == meta_f_path_end) {
-    sprintf(out_buf, "[%s] not a %s filetype\n", __FUNCTION__, BITMAP_FILE);
+    sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, meta_path, BITMAP_FILE);
     WR_2_STDOUT;
     ABORT;
   }
@@ -321,7 +323,17 @@ void updates_handler(const char *path) {
 
   internal_release(meta_path, &meta_fi);
 
-  internal_unlink_file(path, FALSE);
+  strcpy(del_path, path);
+  del_f_path_end = strstr(del_path, BITMAP_FILE);
+
+  if(NULL == del_f_path_end) {
+    sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, del_path, BITMAP_FILE);
+    WR_2_STDOUT;
+    ABORT;
+  }
+  *del_f_path_end = NULL;
+
+  internal_unlink_file(del_path, FALSE);
 
   res = internal_rename(new_meta_path, meta_path);
   if(res < 0) {

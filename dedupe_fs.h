@@ -29,6 +29,7 @@
 #define MAX_PATH_LEN 1024
 #define BUF_LEN 512
 #define STAT_LEN 256
+#define FILESIZE_LEN 4
 
 #define SUCCESS 0
 #define FAILED -1
