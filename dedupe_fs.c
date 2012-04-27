@@ -13,7 +13,7 @@ static unsigned int *bitmap = NULL;
 
 dedupe_globals globals;
 
- void *lazy_worker_thread(void *);
+void *lazy_worker_thread(void *);
 extern void create_dir_search_str(char *, char *);
 extern char *sha1(char *, int);
 
@@ -1096,6 +1096,12 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     block_num = offset / MINCHUNK;
     bitmap[block_num/32] |= 1<<(block_num%32);
 
+    if((size_t)(offset+size) > stbuf.st_size) {
+      bitmap[NUM_BITMAP_WORDS] = (unsigned int)(offset+size);
+    } else {
+      bitmap[NUM_BITMAP_WORDS] = (unsigned int)(stbuf.st_size);
+    }
+
   } else {
 
     printf("First time write\n");
@@ -1111,6 +1117,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     block_num = offset / MINCHUNK;
     bitmap[block_num/32] |= 1<<(block_num%32);
 
+    bitmap[NUM_BITMAP_WORDS] = (unsigned int)(offset+size);
   }
 
   dedupe_fs_unlock(ab_path, fi->fh);
@@ -1425,6 +1432,8 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
   }
 
   internal_release(bitmap_file_path, &bitmap_fi);
+
+  bitmap[NUM_BITMAP_WORDS] = (unsigned int)-1;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

@@ -20,8 +20,7 @@ extern int internal_release(const char *, struct fuse_file_info *);
 
 void updates_handler(const char *path) {
 
-  int i = 0, j = 0;
-  int res = 0, no_updates = 0;
+  int i = 0, j = 0, res = 0;
   int read = 0, toread = 0, todedupe = 0;
 
   off_t old_data_len = 0, new_data_endoff = 0;
@@ -91,7 +90,7 @@ void updates_handler(const char *path) {
   *meta_f_path_end = NULL;
 
   strcpy(new_meta_path, meta_path);
-  strcat(new_meta_path, ".new_meta");
+  strcat(new_meta_path, NEW_META);
 
   bitmap_fi.flags = O_RDWR;
   res = internal_open(ab_path, &bitmap_fi);
@@ -118,17 +117,7 @@ void updates_handler(const char *path) {
 
   dedupe_fs_lock(ab_f_path, ab_fi.fh);
 
-  no_updates = 0;
-
-  for(i = 0 ; i < NUM_BITMAP_WORDS ; i++) {
-    if(btmap[i] > 0) {
-      break;
-    } else {
-      no_updates++;
-    }
-  }
-
-  if(no_updates == NUM_BITMAP_WORDS) {
+  if(btmap[NUM_BITMAP_WORDS] == (unsigned int)-1) {
 
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
@@ -206,7 +195,7 @@ void updates_handler(const char *path) {
 
       } else {
 
-        if(tot_file_read >= metadata_stbuf.st_size) {
+        if(tot_file_read >= btmap[NUM_BITMAP_WORDS]) {
           i += 1;
           break;
         }
@@ -332,12 +321,18 @@ void updates_handler(const char *path) {
 
   internal_release(meta_path, &meta_fi);
 
+  internal_unlink_file(path, FALSE);
+
   res = internal_rename(new_meta_path, meta_path);
   if(res < 0) {
     ABORT;
   }
 
   /* Truncate the file in the filestore */
+
+  internal_truncate(ab_f_path, (off_t)0);
+
+  btmap[NUM_BITMAP_WORDS] = (unsigned int)-1;
 
   dedupe_fs_unlock(ab_f_path, ab_fi.fh);
   internal_release(ab_f_path, &ab_fi);

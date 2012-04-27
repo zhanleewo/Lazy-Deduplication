@@ -541,7 +541,7 @@ return SUCCESS;
 
 }
 
-int internal_unlink_file(const char *path) {
+int internal_unlink_file(const char *path, int flag) {
 
   int res = 0, r_cnt = 0, meta_f_readcnt = 0;
 
@@ -555,9 +555,11 @@ int internal_unlink_file(const char *path) {
   struct stat stbuf, meta_stbuf;
   struct fuse_file_info meta_fi;
 
-  off_t hash_off =0;
-  char *sha1,*saveptr,*st,*end;
-  sha1 = saveptr = st = end = NULL;
+  off_t hash_off = 0;
+
+  char *st = NULL, *end = NULL;
+  char *sha1 = NULL, *saveptr = NULL;
+
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
@@ -577,10 +579,11 @@ int internal_unlink_file(const char *path) {
 
   dedupe_fs_lock(meta_path,meta_fi.fh);
 
-  res = internal_read(meta_path,stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
+  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
   if(res < 0) {
-     ABORT;
+    ABORT;
   }
+
   meta_f_readcnt += STAT_LEN;
   char2stbuf(stat_buf, &stbuf);
   hash_off = STAT_LEN;
@@ -612,23 +615,25 @@ int internal_unlink_file(const char *path) {
      ABORT;
   }
 
-  res = internal_unlink(meta_path);
-  if(res < 0) {
-     return res;
+  if(TRUE == flag) {
+    res = internal_unlink(meta_path);
+    if(res < 0) {
+       return res;
+    }
+ 
+    res = internal_unlink(ab_path);
+    if(res < 0) {
+       return res;
+    }
+ 
+    dedupe_fs_filestore_path(bitmap_file_path, path);
+    strcat(bitmap_file_path, BITMAP_FILE);
+ 
+    res = internal_unlink(bitmap_file_path);
+    if(res < 0) {
+       return res;
+    }
   }
-
-  res = internal_unlink(ab_path);
-  if(res < 0) {
-     return res;
-  }
-
-  dedupe_fs_filestore_path(bitmap_file_path, path);
-  strcat(bitmap_file_path, BITMAP_FILE);
-
-  res = internal_unlink(bitmap_file_path);
-  if(res < 0) {
-     return res;
-  }   
 
 #ifdef DEBUG
    sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -654,7 +659,6 @@ int internal_truncate(const char *path, off_t newsize) {
     res = -errno;
     return res;
   }
-
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -688,9 +692,10 @@ int internal_releasedir(const char *path, struct fuse_file_info *fi) {
   return SUCCESS;
 }
 
-int internal_isdirempty(const char *path,struct fuse_file_info *fi) {
+int internal_isdirempty(const char *path, struct fuse_file_info *fi) {
 
-   int res =0,n=0;
+   int res = 0, n = 0;
+
    char out_buf[BUF_LEN] = {0}; 
    struct dirent *d;
    DIR *dir;
@@ -705,27 +710,27 @@ int internal_isdirempty(const char *path,struct fuse_file_info *fi) {
 	exit(errno);
    }
 
-    fi->fh = (intptr_t)dir;
-     
-    while ((d = readdir(fi->fh)) != NULL) {
-    if(++n > 2)
-      break;
-    }
+   fi->fh = (intptr_t)dir;
+    
+   while ((d = readdir(fi->fh)) != NULL) {
+   if(++n > 2)
+     break;
+   }
 
-    res = closedir((DIR *)(intptr_t)fi->fh);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] closedir failed on [%s]", __FUNCTION__, path);
-      perror(out_buf);
-      res = -errno;
-    }
-     
-    #ifdef DEBUG
-      sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-      WR_2_STDOUT;
-    #endif
+   res = closedir((DIR *)(intptr_t)fi->fh);
+   if(FAILED == res) {
+     sprintf(out_buf, "[%s] closedir failed on [%s]", __FUNCTION__, path);
+     perror(out_buf);
+     res = -errno;
+   }
+ 
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
 
-    if (n <= 2) 
-        return TRUE;
-    else
-        return FALSE;
+   if (n <= 2) 
+       return TRUE;
+   else
+       return FALSE;
 }

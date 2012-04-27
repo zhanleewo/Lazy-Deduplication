@@ -470,6 +470,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
     }
   }
 
+  btmap[NUM_BITMAP_WORDS] = (unsigned int)-1;
+
   res = munmap(btmap, BITMAP_LEN);
   if(FAILED == res) {
     ABORT;
