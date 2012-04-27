@@ -400,7 +400,9 @@ int internal_unlink(const char *path) {
 
 
 int internal_unlink_hash_block(const char *sha1) {
-  int res=0,nlinks_num=0,isempty=0;
+
+  int res = 0, nlinks_num = 0, isempty = 0;
+
   char out_buf[BUF_LEN] = {0};
   char dir_srchstr[MAX_PATH_LEN] = {0};
   char remove_path[MAX_PATH_LEN] = {0};
@@ -410,10 +412,10 @@ int internal_unlink_hash_block(const char *sha1) {
 
   struct fuse_file_info nlinks_fi,dir_fi;
 
-  #ifdef DEBUG
-    sprintf(out_buf,"[%s] entry\n", __FUNCTION__);
-    WR_2_STDOUT;	
-  #endif
+#ifdef DEBUG
+  sprintf(out_buf,"[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;	
+#endif
 
   create_dir_search_str(dir_srchstr, sha1);
   
@@ -434,111 +436,115 @@ int internal_unlink_hash_block(const char *sha1) {
   dedupe_fs_lock(nlinks_path, nlinks_fi.fh); 
  
   res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
+  if(res < 0) {
+    exit(errno);
+  }
+
+  sscanf(nlinks_cnt, "%d", &nlinks_num);
+  nlinks_num -= 1;
+
+  sprintf(nlinks_cnt, "%d", nlinks_num);
+
+  res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
+  if(res < 0) {
+    exit(errno);
+  }
+
+  if(nlinks_num <= FALSE) {
+    dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
+    res = internal_release(nlinks_path, &nlinks_fi);
     if(res < 0) {
-      exit(errno);
+        exit(errno);
     }
+  }
 
-    sscanf(nlinks_cnt, "%d", &nlinks_num);
-    nlinks_num -= 1;
-
-    sprintf(nlinks_cnt, "%d", nlinks_num);
-
-    res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
+  else {
+    res = internal_unlink(file_chunk_path);
     if(res < 0) {
-      exit(errno);
+        exit(errno);
+   }   
+
+    dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
+    res = internal_release(nlinks_path, &nlinks_fi);
+    if(res < 0) {
+        exit(errno);
     }
 
-    if(nlinks_num <= FALSE) {
-      dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
-      res = internal_release(nlinks_path, &nlinks_fi);
-      if(res < 0) {
-          exit(errno);
-    }
-    }
+    res = internal_unlink(nlinks_path);
+    if(res < 0) {
+        exit(errno);
+    }     
 
-    else {
-      res = internal_unlink(file_chunk_path);
-      if(res < 0) {
-	  exit(errno);
-     }   
-
-      dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
-      res = internal_release(nlinks_path, &nlinks_fi);
-      if(res < 0) {
-          exit(errno);
+    res = internal_rmdir(dir_srchstr);
+    if(res < 0) {
+        exit(errno);
     }
-      res = internal_unlink(nlinks_path);
-      if(res < 0) {
-          exit(errno);
-      }     
- 
+   
+    memset(remove_path,'\0', MAX_PATH_LEN);
+
+    strncpy(remove_path,dir_srchstr,16);
+    remove_path[16]='\0';
+    isempty = internal_isdirempty(remove_path,&dir_fi);
+    if(isempty == TRUE) {
+
       res = internal_rmdir(dir_srchstr);
       if(res < 0) {
-	  exit(errno);
+         exit(errno);
       }
-     
-      memset(remove_path,'\0', MAX_PATH_LEN);
-
-      strncpy(remove_path,dir_srchstr,16);
-      remove_path[16]='\0';
-      isempty = internal_isdirempty(remove_path,&dir_fi);
-      if(isempty == TRUE)  {
-          res = internal_rmdir(dir_srchstr);
-          if(res < 0) {
-	     exit(errno);
-      }
-      }
-      else {
-        #ifdef DEBUG
-  	  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  	  WR_2_STDOUT;
-	#endif
-	return SUCCESS;
-      }
-     
-      memset(remove_path,'\0', MAX_PATH_LEN);
-
-      strncpy(remove_path,dir_srchstr,7);
-      remove_path[7]='\0';
-      isempty = internal_isdirempty(remove_path,&dir_fi);
-      if(isempty == TRUE)  {
-          res = internal_rmdir(dir_srchstr);
-          if(res < 0) {
-             exit(errno);
-      }
-      }
-      else {
-      #ifdef DEBUG
-	 sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
- 	 WR_2_STDOUT;
-      #endif
+    }
+    else {
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
       return SUCCESS;
-      }
+    }
+   
+    memset(remove_path,'\0', MAX_PATH_LEN);
 
-      memset(remove_path,'\0', MAX_PATH_LEN);
+    strncpy(remove_path,dir_srchstr,7);
+    remove_path[7]='\0';
+    isempty = internal_isdirempty(remove_path,&dir_fi);
+    if(isempty == TRUE)  {
+      res = internal_rmdir(dir_srchstr);
+      if(res < 0) {
+         exit(errno);
+      }
+    }
+    else {
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+      return SUCCESS;
+    }
 
-      strncpy(remove_path,dir_srchstr,2);
-      remove_path[2]='\0';
-      isempty = internal_isdirempty(remove_path,&dir_fi);
-      if(isempty == TRUE)  {
-          res = internal_rmdir(dir_srchstr);
-          if(res < 0) {
-             exit(errno);
-      }
-      }
-      }
+    memset(remove_path,'\0', MAX_PATH_LEN);
 
-  #ifdef DEBUG
-    sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-    WR_2_STDOUT;
-  #endif
-  return SUCCESS;
+    strncpy(remove_path,dir_srchstr,2);
+    remove_path[2]='\0';
+    isempty = internal_isdirempty(remove_path,&dir_fi);
+    if(isempty == TRUE)  {
+      res = internal_rmdir(dir_srchstr);
+      if(res < 0) {
+         exit(errno);
+      }
+    }
+  }
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+return SUCCESS;
 
 }
 
 int internal_unlink_file(const char *path) {
 
-  int res = 0,r_cnt=0,meta_f_readcnt=0;
+  int res = 0, r_cnt = 0, meta_f_readcnt = 0;
+
   char out_buf[BUF_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
@@ -566,7 +572,7 @@ int internal_unlink_file(const char *path) {
     res = internal_open(meta_path, &meta_fi);
     if(res < 0) {
       return res;
-  }
+    }
   }
 
   dedupe_fs_lock(meta_path,meta_fi.fh);
@@ -581,23 +587,23 @@ int internal_unlink_file(const char *path) {
   
   while(meta_f_readcnt < meta_stbuf.st_size) {
 
-        memset(hash_line, 0, OFF_HASH_LEN);
-        res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
-        if(res < 0) {
-          return res;
-        }
+    memset(hash_line, 0, OFF_HASH_LEN);
+    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
+    if(res < 0) {
+      return res;
+    }
 
-        st = strtok_r(hash_line, ":", &saveptr);
-        end = strtok_r(NULL, ":", &saveptr);
-        sha1 = strtok_r(NULL, ":", &saveptr);
-        sha1[strlen(sha1)-1] = '\0';
+    st = strtok_r(hash_line, ":", &saveptr);
+    end = strtok_r(NULL, ":", &saveptr);
+    sha1 = strtok_r(NULL, ":", &saveptr);
+    sha1[strlen(sha1)-1] = '\0';
 
-        res = internal_unlink_hash_block(sha1);
-        if(res < 0) {
-           return res;
-        }
-	meta_f_readcnt += OFF_HASH_LEN;
-        hash_off += OFF_HASH_LEN;
+    res = internal_unlink_hash_block(sha1);
+    if(res < 0) {
+      return res;
+    }
+    meta_f_readcnt += OFF_HASH_LEN;
+    hash_off += OFF_HASH_LEN;
   }
 
   dedupe_fs_unlock(meta_path,meta_fi.fh);
@@ -607,6 +613,11 @@ int internal_unlink_file(const char *path) {
   }
 
   res = internal_unlink(meta_path);
+  if(res < 0) {
+     return res;
+  }
+
+  res = internal_unlink(ab_path);
   if(res < 0) {
      return res;
   }
