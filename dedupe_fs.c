@@ -1204,26 +1204,25 @@ static int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
 }
 
 static int dedupe_fs_truncate(const char *path, off_t newsize) {
+
   int res = 0;
+  int meta_present = FALSE;
 
   time_t tm;
 
-  off_t cur_off = 0, hash_off = 0, rem_size = 0;
-  off_t st_off = 0, end_off = 0, num_hash_lines = 0;
-
-  char *hash = NULL, *sha1_out = NULL, *saveptr = NULL;
-
-  char stat_buf[STAT_LEN] = {0};
   char out_buf[BUF_LEN] = {0};
+  char stat_buf[STAT_LEN] = {0};
+  char filesize[FILESIZE_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
-  char hash_line[OFF_HASH_LEN] = {0};
-  char filechunk[MAXCHUNK+1] = {0};
-  char meta_data[OFF_HASH_LEN] = {0};
+  char bitmap_path[MAX_PATH_LEN] = {0};
 
   struct stat stbuf = {0};
   struct rlimit rlim = {0};
+
   struct fuse_file_info fi = {0};
+  struct fuse_file_info meta_fi = {0};
+  struct fuse_file_info bitmap_fi = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -1238,142 +1237,74 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   }
 
   /* 
-     File editors call truncate prior to updating the file. 
-     On truncate, set the bitmap entry's filesize to 0
+   * File editors call truncate prior to updating the file. 
+   * On truncate, set the bitmap entry's filesize to 0
    */
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  res = internal_truncate(ab_path, newsize);
-  if(SUCCESS == res) {
-    return res;
+  fi.flags = O_RDONLY;
+  res = internal_open(ab_path, &fi);
+  if(res < 0) {
+    ABORT;
   }
+
+  dedupe_fs_lock(ab_path, fi.fh);
 
   dedupe_fs_metadata_path(meta_path, path);
 
-  fi.flags = O_RDWR;
-  res = internal_open(meta_path, &fi);
-  if(res < 0) {
-    return res;
-  }
-
-  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
-  if(res <= 0) {
-    internal_release(meta_path, &fi);
-    return res;
-  }
-
-  char2stbuf(stat_buf, &stbuf);
-
-  hash_off = STAT_LEN;
-
-  if(newsize == stbuf.st_size) {
-    internal_release(meta_path, &fi);
-    return SUCCESS;
-  } else if (newsize < stbuf.st_size) {
-
-    while(TRUE) {
-      res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi, FALSE);
-      if(res <= 0) {
-        internal_release(meta_path, &fi);
-        return res;
-      }
-
-      st_off = (off_t)atoll(strtok_r(hash_line, ":", &saveptr));
-      end_off = (off_t)atoll(strtok_r(NULL, ":", &saveptr));
-      hash = strtok_r(NULL, ":", &saveptr);
- 
-      hash[strlen(hash)-1] = '\0';
-
-      hash_off += OFF_HASH_LEN;
-
-      if((newsize-1) >= st_off && (newsize-1) <= end_off) {
-        break;
-      }
-    }
-
-    // TODO incorporate unlink for all the hashes
-    // Create new hash for the last block
-
+  meta_fi.flags = O_RDWR;
+  res = internal_open(meta_path, &meta_fi);
+  if(-ENOENT == res) {
+    res = internal_truncate(ab_path, newsize);
   } else {
-    // Find the last hashline in the metadata file
-    cur_off = stbuf.st_size - STAT_LEN;
-    num_hash_lines = cur_off / OFF_HASH_LEN;
-
-    hash_off = cur_off + (num_hash_lines -1) * OFF_HASH_LEN;
-
-    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &fi, FALSE);
-    if(res <= 0) {
-      internal_release(meta_path, &fi);
-      return res;
-    }
-
-    st_off = (off_t)atoll(strtok_r(hash_line, ":", &saveptr));
-    end_off = (off_t)atoll(strtok_r(NULL, ":", &saveptr));
-
-    rem_size = newsize - (end_off + 1);
-
-    while(rem_size > MAXCHUNK) {
-
-      memset(filechunk, 0, MAXCHUNK);
-      sha1_out = sha1(filechunk, MAXCHUNK);
-      create_chunkfile(filechunk, sha1_out, MAXCHUNK);
-
-      memset(meta_data, 0, OFF_HASH_LEN);
-      st_off = end_off + 1;
-      end_off += MAXCHUNK;
-      hash_off += OFF_HASH_LEN;
-
-      snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, end_off, sha1_out);
-      res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi, FALSE);
-      if(res < 0) {
-        internal_release(meta_path, &fi);
-        return res;
-      }
-
-      rem_size -= MAXCHUNK;
-      free(sha1_out);
-      sha1_out = NULL;
-    }
-
-    memset(filechunk, 0, rem_size);
-    sha1_out = sha1(filechunk, rem_size);
-    create_chunkfile(filechunk, sha1_out, rem_size);
-
-    memset(meta_data, 0, OFF_HASH_LEN);
-    st_off = end_off + 1;
-    end_off += rem_size;
-    hash_off += OFF_HASH_LEN;
-
-    snprintf(meta_data, OFF_HASH_LEN, "%lld:%lld:%s\n", st_off, end_off, sha1_out);
-    res = internal_write(meta_path, meta_data, OFF_HASH_LEN, hash_off, &fi, FALSE);
-    if(res < 0) {
-      internal_release(meta_path, &fi);
-      return res;
-    }
-
-    free(sha1_out);
-    sha1_out = NULL;
+    meta_present = TRUE;
   }
 
-  // update st_mtime and st_ctime during truncate
-  time(&tm);
-  stbuf.st_size = newsize;
-  stbuf.st_mtime = tm;
-  stbuf.st_ctime = tm;
+  dedupe_fs_filestore_path(bitmap_path, path);
+  strcat(bitmap_path, BITMAP_FILE);
 
-  stbuf2char(stat_buf, &stbuf);
-
-  res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
+  bitmap_fi.flags = O_WRONLY;
+  res = internal_open(bitmap_path, &bitmap_fi);
   if(res < 0) {
-    internal_release(meta_path, &fi);
-    return res;
+    ABORT;
   }
 
-  res = internal_release(meta_path, &fi);
-  if(FAILED == res) {
-    return res;
+  res = internal_write(bitmap_path, &newsize, FILESIZE_LEN, (off_t)(sizeof(int)*NUM_BITMAP_WORDS), &bitmap_fi, FALSE);
+  if(res < 0) {
+    ABORT;
   }
+
+  if(TRUE == meta_present) {
+
+    // update st_mtime and st_ctime during truncate
+
+    res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi);
+    if(res < 0) {
+      ABORT;
+    }
+
+    time(&tm);
+    stbuf.st_size = newsize;
+    stbuf.st_mtime = tm;
+    stbuf.st_ctime = tm;
+ 
+    stbuf2char(stat_buf, &stbuf);
+ 
+    res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
+    if(res < 0) {
+      internal_release(meta_path, &meta_fi);
+      return res;
+    }
+ 
+    res = internal_release(meta_path, &meta_fi);
+    if(FAILED == res) {
+      return res;
+    }
+  }
+
+  dedupe_fs_unlock(ab_path, fi.fh);
+  internal_release(ab_path, &fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
