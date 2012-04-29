@@ -25,12 +25,12 @@ int internal_release(const char *, struct fuse_file_info *);
 
 int internal_unlink(const char *);
 
-int internal_unlink_file(const char *, int);
+int internal_unlink_file(const char *, int, int);
 
 int internal_unlink_hash_block(const char *);
 
 int internal_releasedir(const char *, struct fuse_file_info *); 
 
-int internal_isdirempty(const char *,struct fuse_file_info *);
+int internal_isdirempty(const char *);
 
 #endif

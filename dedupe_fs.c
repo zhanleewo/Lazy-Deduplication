@@ -127,9 +127,8 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
   WR_2_STDOUT;
 #endif
 
-  dedupe_fs_metadata_path(meta_path, path);
-
   memset(stbuf, 0, sizeof(struct stat));
+  dedupe_fs_metadata_path(meta_path, path);
 
   res = internal_getattr(meta_path, stbuf);
   if(res < 0) {
@@ -510,6 +509,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 static int dedupe_fs_unlink(const char *path) {
 
   int res = 0;
+
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
 
@@ -518,13 +518,9 @@ static int dedupe_fs_unlink(const char *path) {
   WR_2_STDOUT;
 #endif
 
-  dedupe_fs_filestore_path(ab_path, path);
-  res = unlink(ab_path);
+  res = internal_unlink_file(path, TRUE);
   if (res < 0) {
-    // TODO need to handle file unlink from chunk database and decrementing link count
-    sprintf(out_buf, "[%s] unlink failed on [%s]", __FUNCTION__, ab_path);
-    perror(out_buf);
-    res = -errno;
+    ABORT;
   }
 
 #ifdef DEBUG
@@ -1275,6 +1271,8 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     ABORT;
   }
 
+  internal_release(bitmap_path, &bitmap_fi);
+
   if(TRUE == meta_present) {
 
     // update st_mtime and st_ctime during truncate
@@ -1284,8 +1282,10 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
       ABORT;
     }
 
+    char2stbuf(stat_buf, &stbuf);
+
     time(&tm);
-    stbuf.st_size = newsize;
+    //stbuf.st_size = newsize;
     stbuf.st_mtime = tm;
     stbuf.st_ctime = tm;
  
@@ -1327,10 +1327,11 @@ static int dedupe_fs_utime(const char *path, struct utimbuf *ubuf) {
   dedupe_fs_filestore_path(ab_path, path);
 
   res = utime(ab_path, ubuf);
-  if(FAILED == res)
+  if(FAILED == res) {
     sprintf(out_buf, "[%s] utime failed on [%s]", __FUNCTION__, ab_path);
     perror(out_buf);
     res = -errno;
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

@@ -1,6 +1,8 @@
 #include "internal_cmds.h"
 #include "rabin-karp.h"
 
+extern char *dedupe_hashes;
+
 int internal_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
   int fd = 0;
@@ -410,7 +412,7 @@ int internal_unlink_hash_block(const char *sha1) {
   char nlinks_path[MAX_PATH_LEN] = {0};
   char nlinks_cnt[NLINKS_WIDTH] = {0};
 
-  struct fuse_file_info nlinks_fi,dir_fi;
+  struct fuse_file_info nlinks_fi = {0};
 
 #ifdef DEBUG
   sprintf(out_buf,"[%s] entry\n", __FUNCTION__);
@@ -433,8 +435,6 @@ int internal_unlink_hash_block(const char *sha1) {
     exit(errno);
   }
  
-  dedupe_fs_lock(nlinks_path, nlinks_fi.fh); 
- 
   res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
   if(res < 0) {
     exit(errno);
@@ -450,21 +450,18 @@ int internal_unlink_hash_block(const char *sha1) {
     exit(errno);
   }
 
-  if(nlinks_num <= FALSE) {
-    dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
+  if(nlinks_num > FALSE) {
     res = internal_release(nlinks_path, &nlinks_fi);
     if(res < 0) {
         exit(errno);
     }
   }
-
   else {
     res = internal_unlink(file_chunk_path);
     if(res < 0) {
       exit(errno);
    }
 
-    dedupe_fs_unlock(nlinks_path,nlinks_fi.fh);
     res = internal_release(nlinks_path, &nlinks_fi);
     if(res < 0) {
       exit(errno);
@@ -472,24 +469,26 @@ int internal_unlink_hash_block(const char *sha1) {
 
     res = internal_unlink(nlinks_path);
     if(res < 0) {
-        exit(errno);
-    }     
+      exit(errno);
+    }
 
+    /* Delete the dir containing the current sha1 block and nlinks */
     res = internal_rmdir(dir_srchstr);
     if(res < 0) {
-        exit(errno);
+      exit(errno);
     }
-   
+
     memset(remove_path,'\0', MAX_PATH_LEN);
 
-    strncpy(remove_path,dir_srchstr,16);
-    remove_path[16]='\0';
-    isempty = internal_isdirempty(remove_path,&dir_fi);
+    strncpy(remove_path, dir_srchstr, strlen(dedupe_hashes)+18);
+    remove_path[18] = '\0';
+
+    isempty = internal_isdirempty(remove_path);
     if(isempty == TRUE) {
 
-      res = internal_rmdir(dir_srchstr);
+      res = internal_rmdir(remove_path);
       if(res < 0) {
-         exit(errno);
+        exit(errno);
       }
     }
     else {
@@ -502,11 +501,12 @@ int internal_unlink_hash_block(const char *sha1) {
    
     memset(remove_path,'\0', MAX_PATH_LEN);
 
-    strncpy(remove_path,dir_srchstr,7);
-    remove_path[7]='\0';
-    isempty = internal_isdirempty(remove_path,&dir_fi);
+    strncpy(remove_path, dir_srchstr, strlen(dedupe_hashes)+9);
+    remove_path[9] = '\0';
+
+    isempty = internal_isdirempty(remove_path);
     if(isempty == TRUE)  {
-      res = internal_rmdir(dir_srchstr);
+      res = internal_rmdir(remove_path);
       if(res < 0) {
          exit(errno);
       }
@@ -521,11 +521,12 @@ int internal_unlink_hash_block(const char *sha1) {
 
     memset(remove_path,'\0', MAX_PATH_LEN);
 
-    strncpy(remove_path,dir_srchstr,2);
-    remove_path[2]='\0';
-    isempty = internal_isdirempty(remove_path,&dir_fi);
+    strncpy(remove_path, dir_srchstr, strlen(dedupe_hashes)+4);
+    remove_path[4]='\0';
+
+    isempty = internal_isdirempty(remove_path);
     if(isempty == TRUE)  {
-      res = internal_rmdir(dir_srchstr);
+      res = internal_rmdir(remove_path);
       if(res < 0) {
          exit(errno);
       }
@@ -541,7 +542,7 @@ return SUCCESS;
 
 }
 
-int internal_unlink_file(const char *path, int flag) {
+int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
 
   int res = 0, r_cnt = 0, meta_f_readcnt = 0;
 
@@ -552,12 +553,13 @@ int internal_unlink_file(const char *path, int flag) {
   char hash_line[OFF_HASH_LEN] = {0};
   char bitmap_file_path[MAX_PATH_LEN] = {0};
 
-  struct stat stbuf, meta_stbuf;
-  struct fuse_file_info meta_fi;
+  struct stat stbuf = {0}, meta_stbuf = {0};
+
+  struct fuse_file_info fi = {0};
+  struct fuse_file_info meta_fi = {0};
 
   off_t hash_off = 0;
 
-  char *st = NULL, *end = NULL;
   char *sha1 = NULL, *saveptr = NULL;
 
 #ifdef DEBUG
@@ -567,17 +569,27 @@ int internal_unlink_file(const char *path, int flag) {
 
   dedupe_fs_metadata_path(meta_path, path);
   dedupe_fs_filestore_path(ab_path, path);
-  res = internal_getattr(meta_path, &meta_stbuf);
 
-  if(res != -ENOENT) {
-    meta_fi.flags = O_RDONLY;
-    res = internal_open(meta_path, &meta_fi);
-    if(res < 0) {
-      return res;
-    }
+  fi.flags = O_RDONLY;
+  res = internal_open(ab_path, &fi);
+  if(res < 0) {
+    ABORT;
   }
 
-  dedupe_fs_lock(meta_path,meta_fi.fh);
+  if(FALSE == lk_flag) {
+    dedupe_fs_lock(ab_path, fi.fh);
+  }
+
+  meta_fi.flags = O_RDONLY;
+  res = internal_open(meta_path, &meta_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  res = internal_getattr(meta_path, &meta_stbuf);
+  if(res < 0) {
+    ABORT;
+  }
 
   res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
   if(res < 0) {
@@ -596,8 +608,9 @@ int internal_unlink_file(const char *path, int flag) {
       return res;
     }
 
-    st = strtok_r(hash_line, ":", &saveptr);
-    end = strtok_r(NULL, ":", &saveptr);
+    strtok_r(hash_line, ":", &saveptr);
+    strtok_r(NULL, ":", &saveptr);
+
     sha1 = strtok_r(NULL, ":", &saveptr);
     sha1[strlen(sha1)-1] = '\0';
 
@@ -609,19 +622,13 @@ int internal_unlink_file(const char *path, int flag) {
     hash_off += OFF_HASH_LEN;
   }
 
-  dedupe_fs_unlock(meta_path,meta_fi.fh);
   res = internal_release(meta_path, &meta_fi);
   if(res < 0) {
      ABORT;
   }
 
-  if(TRUE == flag) {
+  if(TRUE == full_del_flag) {
     res = internal_unlink(meta_path);
-    if(res < 0) {
-       return res;
-    }
- 
-    res = internal_unlink(ab_path);
     if(res < 0) {
        return res;
     }
@@ -633,6 +640,15 @@ int internal_unlink_file(const char *path, int flag) {
     if(res < 0) {
        return res;
     }
+
+    res = internal_unlink(ab_path);
+    if(res < 0) {
+       return res;
+    }
+  }
+
+  if(FALSE == lk_flag) {
+    dedupe_fs_unlock(ab_path, fi.fh);
   }
 
 #ifdef DEBUG
@@ -692,11 +708,13 @@ int internal_releasedir(const char *path, struct fuse_file_info *fi) {
   return SUCCESS;
 }
 
-int internal_isdirempty(const char *path, struct fuse_file_info *fi) {
+int internal_isdirempty(const char *path) {
 
    int res = 0, n = 0;
 
-   char out_buf[BUF_LEN] = {0}; 
+   char out_buf[BUF_LEN] = {0};
+
+   struct fuse_file_info fi;
    struct dirent *d;
    DIR *dir;
 
@@ -705,32 +723,31 @@ int internal_isdirempty(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
   
-   res = internal_opendir(path,fi);
-   if(res < 0) {
-	exit(errno);
-   }
+  res = internal_opendir(path, &fi);
+  if(res < 0) {
+    exit(errno);
+  }
 
-   fi->fh = (intptr_t)dir;
-    
-   while ((d = readdir(fi->fh)) != NULL) {
-   if(++n > 2)
-     break;
-   }
+  while ((d = readdir(fi.fh)) != NULL) {
+    if(++n > 2) {
+      break;
+    }
+  }
 
-   res = closedir((DIR *)(intptr_t)fi->fh);
-   if(FAILED == res) {
-     sprintf(out_buf, "[%s] closedir failed on [%s]", __FUNCTION__, path);
-     perror(out_buf);
-     res = -errno;
-   }
+  res = closedir((DIR *)(intptr_t)fi.fh);
+  if(FAILED == res) {
+    sprintf(out_buf, "[%s] closedir failed on [%s]", __FUNCTION__, path);
+    perror(out_buf);
+    res = -errno;
+  }
  
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
 
-   if (n <= 2) 
-       return TRUE;
-   else
-       return FALSE;
+  if (n <= 2) 
+    return TRUE;
+  else
+    return FALSE;
 }

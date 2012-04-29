@@ -42,11 +42,11 @@ void updates_handler(const char *path) {
   char *meta_f_path_end = NULL;
   char *sha1 = NULL, *saveptr = NULL;
 
+  char out_buf[BUF_LEN] = {0};
   char hash_line[OFF_HASH_LEN] = {0};
   char new_hash_line[OFF_HASH_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
   char new_stat_buf[STAT_LEN] = {0};
-  char out_buf[BUF_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
   char del_path[MAX_PATH_LEN] = {0};
   char srchstr[MAX_PATH_LEN] = {0};
@@ -69,6 +69,11 @@ void updates_handler(const char *path) {
   struct fuse_file_info meta_fi = {0};
   struct fuse_file_info hash_fi = {0};
   struct fuse_file_info ab_fi = {0};
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
 
   dedupe_fs_filestore_path(ab_path, path);
   dedupe_fs_metadata_path(meta_path, path);
@@ -206,7 +211,11 @@ void updates_handler(const char *path) {
         hash_off = STAT_LEN;
 
         // add logic for the last file
-        toread = MINCHUNK;
+        if(btmap[NUM_BITMAP_WORDS]-tot_file_read > MINCHUNK) {
+          toread = MINCHUNK;
+        } else {
+          toread = btmap[NUM_BITMAP_WORDS]-tot_file_read;
+        }
 
         while(meta_f_readcnt < meta_stbuf.st_size) {
 
@@ -333,7 +342,7 @@ void updates_handler(const char *path) {
   }
   *del_f_path_end = NULL;
 
-  internal_unlink_file(del_path, FALSE);
+  internal_unlink_file(del_path, FALSE, TRUE);
 
   res = internal_rename(new_meta_path, meta_path);
   if(res < 0) {
@@ -353,6 +362,12 @@ void updates_handler(const char *path) {
   if(FAILED == res) {
     ABORT;
   }
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
 }
 
 void process_initial_file_store(char *path) {
