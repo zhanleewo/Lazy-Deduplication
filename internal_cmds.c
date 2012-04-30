@@ -544,7 +544,8 @@ return SUCCESS;
 
 int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
 
-  int res = 0, r_cnt = 0, meta_f_readcnt = 0;
+  int res = 0, r_cnt = 0;
+  int meta_found = FALSE, meta_f_readcnt = 0;
 
   char out_buf[BUF_LEN] = {0};
   char stat_buf[STAT_LEN] = {0};
@@ -573,7 +574,12 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   fi.flags = O_RDONLY;
   res = internal_open(ab_path, &fi);
   if(res < 0) {
-    ABORT;
+
+    strcat(ab_path, DELETE_FILE);
+    res = internal_open(ab_path, &fi);
+    if(res < 0) {
+      ABORT;
+    }
   }
 
   if(FALSE == lk_flag) {
@@ -583,54 +589,60 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   meta_fi.flags = O_RDONLY;
   res = internal_open(meta_path, &meta_fi);
   if(res < 0) {
-    return res;
+  } else {
+    meta_found = TRUE;
   }
 
-  res = internal_getattr(meta_path, &meta_stbuf);
-  if(res < 0) {
-    ABORT;
-  }
-
-  res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
-  if(res < 0) {
-    ABORT;
-  }
-
-  meta_f_readcnt += STAT_LEN;
-  char2stbuf(stat_buf, &stbuf);
-  hash_off = STAT_LEN;
-  
-  while(meta_f_readcnt < meta_stbuf.st_size) {
-
-    memset(hash_line, 0, OFF_HASH_LEN);
-    res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
+  if(TRUE == meta_found) {
+    res = internal_getattr(meta_path, &meta_stbuf);
     if(res < 0) {
-      return res;
+      ABORT;
     }
-
-    strtok_r(hash_line, ":", &saveptr);
-    strtok_r(NULL, ":", &saveptr);
-
-    sha1 = strtok_r(NULL, ":", &saveptr);
-    sha1[strlen(sha1)-1] = '\0';
-
-    res = internal_unlink_hash_block(sha1);
+ 
+    res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
     if(res < 0) {
-      return res;
+      ABORT;
     }
-    meta_f_readcnt += OFF_HASH_LEN;
-    hash_off += OFF_HASH_LEN;
-  }
-
-  res = internal_release(meta_path, &meta_fi);
-  if(res < 0) {
-     ABORT;
+ 
+    meta_f_readcnt += STAT_LEN;
+    char2stbuf(stat_buf, &stbuf);
+    hash_off = STAT_LEN;
+    
+    while(meta_f_readcnt < meta_stbuf.st_size) {
+ 
+      memset(hash_line, 0, OFF_HASH_LEN);
+      res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
+      if(res < 0) {
+        return res;
+      }
+ 
+      strtok_r(hash_line, ":", &saveptr);
+      strtok_r(NULL, ":", &saveptr);
+ 
+      sha1 = strtok_r(NULL, ":", &saveptr);
+      sha1[strlen(sha1)-1] = '\0';
+ 
+      res = internal_unlink_hash_block(sha1);
+      if(res < 0) {
+        return res;
+      }
+      meta_f_readcnt += OFF_HASH_LEN;
+      hash_off += OFF_HASH_LEN;
+    }
+ 
+    res = internal_release(meta_path, &meta_fi);
+    if(res < 0) {
+       ABORT;
+    }
   }
 
   if(TRUE == full_del_flag) {
-    res = internal_unlink(meta_path);
-    if(res < 0) {
-       return res;
+
+    if(TRUE == meta_found) {
+      res = internal_unlink(meta_path);
+      if(res < 0) {
+        return res;
+      }
     }
  
     dedupe_fs_filestore_path(bitmap_file_path, path);
@@ -652,10 +664,11 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   }
 
 #ifdef DEBUG
-   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-   WR_2_STDOUT;
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
 #endif
-   return SUCCESS;
+
+  return SUCCESS;
 }
 
 int internal_truncate(const char *path, off_t newsize) {

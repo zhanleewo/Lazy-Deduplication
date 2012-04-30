@@ -96,6 +96,16 @@ void updates_handler(const char *path) {
   }
   *meta_f_path_end = NULL;
 
+  strcpy(del_path, path);
+
+  del_f_path_end = strstr(del_path, BITMAP_FILE);
+  if(NULL == del_f_path_end) {
+    sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, del_path, BITMAP_FILE);
+    WR_2_STDOUT;
+    ABORT;
+  }
+  *del_f_path_end = NULL;
+
   strcpy(new_meta_path, meta_path);
   strcat(new_meta_path, NEW_META);
 
@@ -126,6 +136,7 @@ void updates_handler(const char *path) {
 
   if(btmap[NUM_BITMAP_WORDS] == (unsigned int)-1) {
 
+    /* File has not been updated since the last dedupe pass */
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
 
@@ -332,16 +343,6 @@ void updates_handler(const char *path) {
 
   internal_release(meta_path, &meta_fi);
 
-  strcpy(del_path, path);
-  del_f_path_end = strstr(del_path, BITMAP_FILE);
-
-  if(NULL == del_f_path_end) {
-    sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, del_path, BITMAP_FILE);
-    WR_2_STDOUT;
-    ABORT;
-  }
-  *del_f_path_end = NULL;
-
   internal_unlink_file(del_path, FALSE, TRUE);
 
   res = internal_rename(new_meta_path, meta_path);
@@ -449,8 +450,13 @@ void process_initial_file_store(char *path) {
       strcpy(new_f_path, path);
       strcat(new_f_path, "/");
       strcat(new_f_path, de->d_name);
- 
-      if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
+
+      if((new_f_path_end = strstr(new_f_path, DELETE_FILE)) != NULL) {
+        *new_f_path_end = '\0';
+
+        internal_unlink_file(new_f_path, TRUE, FALSE);
+      }
+      else if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
 
         *new_f_path_end = '\0';
 

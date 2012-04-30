@@ -21,8 +21,10 @@
 #include <pthread.h>
 #include <fuse.h>
 
-#define NEW_META ".new_meta"
+#define NEW_META "._new_meta"
 #define BITMAP_FILE "._bitmap"
+#define DELETE_FILE "._delete"
+
 #define NUM_BITMAP_WORDS 2048
 #define BITMAP_LEN sizeof(int)*(NUM_BITMAP_WORDS+1)
 

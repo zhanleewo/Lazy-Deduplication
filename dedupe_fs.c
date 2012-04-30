@@ -128,6 +128,15 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 #endif
 
   memset(stbuf, 0, sizeof(struct stat));
+
+  dedupe_fs_filestore_path(ab_path, path);
+  res = internal_getattr(ab_path, stbuf);
+  if(-ENOENT == res) {
+    return res;
+  }
+
+  memset(stbuf, 0, sizeof(struct stat));
+
   dedupe_fs_metadata_path(meta_path, path);
 
   res = internal_getattr(meta_path, stbuf);
@@ -154,6 +163,7 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
     bitmap_fi.flags = O_RDONLY;
     res = internal_open(bitmap_path, &bitmap_fi);
     if(res < 0) {
+      /* do nothing */
     } else {
 
       memset(&stat_buf, 0, STAT_LEN);
@@ -178,7 +188,6 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
       }
 
       fsize = *(int *)filesize;
-
       if(fsize != -1) {
         stbuf->st_size = fsize;
       }
@@ -233,13 +242,17 @@ static int dedupe_fs_readdir(
     off_t offset, 
     struct fuse_file_info *fi) {
 
-  int res = 0, flag = FAILED;
+  int res = 0;
 
   DIR *dp;
   struct dirent *de;
 
-  char out_buf[BUF_LEN];
+  char out_buf[BUF_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
+  char bitmap_path[MAX_PATH_LEN] = {0};
+
+  struct fuse_file_info bitmap_fi = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -257,11 +270,14 @@ static int dedupe_fs_readdir(
   }
 
   do {
+    if(NULL != strstr(de->d_name, DELETE_FILE))
+      continue;
+
     if(NULL == strstr(de->d_name, BITMAP_FILE)) {
-      if(filler(buf, de->d_name, NULL, 0))
+      if(filler(buf, de->d_name, NULL, 0)) {
         res = -errno;
+      }
     }
-    flag = SUCCESS;
   } while((de = readdir(dp)) != NULL);
 
 #ifdef DEBUG
@@ -512,18 +528,21 @@ static int dedupe_fs_unlink(const char *path) {
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char ab_del_path[MAX_PATH_LEN] = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
 
-  res = internal_unlink_file(path, TRUE);
-  if (res < 0) {
-    ABORT;
-  }
+  dedupe_fs_filestore_path(ab_path, path);
 
-#ifdef DEBUG
+  dedupe_fs_filestore_path(ab_del_path, path);
+  strcat(ab_del_path, DELETE_FILE);
+
+  res = internal_rename(ab_path, ab_del_path);
+
+  #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
   WR_2_STDOUT;
 #endif
@@ -535,8 +554,12 @@ static int dedupe_fs_rmdir(const char *path) {
 
   int res = 0;
 
+  struct dirent *de;
+
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+
+  struct fuse_file_info dir_fi;
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -545,12 +568,17 @@ static int dedupe_fs_rmdir(const char *path) {
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  res = internal_rmdir(ab_path);
-  if(SUCCESS == res) {
+  res = internal_opendir(ab_path, &dir_fi);
+  if(res < 0) {
     return res;
   }
 
-  // TODO need to handle file unlink part of the code as well also few other checks
+  while((de = readdir(dir_fi.fh)) != NULL) {
+    if(SUCCESS == strcmp(de->d_name, ".") ||
+        SUCCESS == strcmp(de->d_name, "..")) {
+      continue;
+    }
+  }
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
