@@ -938,9 +938,9 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   res = internal_getattr(meta_path, &meta_stbuf);
 
-  if(fi->flags & O_CREAT != O_CREAT && res != -ENOENT) {
+  if(((fi->flags & O_CREAT) != O_CREAT) && res != -ENOENT) {
 
-    printf("not a first time\n");
+    printf("pwrite call\n");
 
     meta_file = TRUE;
     meta_fi.flags = O_RDONLY;
@@ -1119,6 +1119,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     block_num = offset / MINCHUNK;
     bitmap[block_num/32] |= 1<<(block_num%32);
 
+    printf("offset [%lld] size [%ld]\n", offset ,size);
     if((size_t)(offset+size) > stbuf.st_size) {
       bitmap[NUM_BITMAP_WORDS] = (unsigned int)(offset+size);
     } else {
