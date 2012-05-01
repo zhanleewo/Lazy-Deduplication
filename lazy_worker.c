@@ -425,10 +425,19 @@ void process_initial_file_store(char *path) {
 
     res = internal_getattr(ab_path, &stbuf);
     if(res < 0) {
-      ABORT;
+      continue;
     }
 
     if(DT_DIR == de->d_type) {
+
+      strcpy(new_f_path, path);
+      strcat(new_f_path, "/");
+      strcat(new_f_path, de->d_name);
+
+      if((new_f_path_end = strstr(new_f_path, DELETE_FILE)) != NULL) {
+
+        internal_rmdir_dir(new_f_path);
+      }
 
       strcpy(meta_path, dedupe_metadata);
       strcat(meta_path, new_path);
@@ -454,7 +463,9 @@ void process_initial_file_store(char *path) {
       if((new_f_path_end = strstr(new_f_path, DELETE_FILE)) != NULL) {
         *new_f_path_end = '\0';
 
+        printf("HEREE 1\n");
         internal_unlink_file(new_f_path, TRUE, FALSE);
+        printf("HEREE 2\n");
       }
       else if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
 

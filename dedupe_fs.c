@@ -552,12 +552,14 @@ static int dedupe_fs_unlink(const char *path) {
 
 static int dedupe_fs_rmdir(const char *path) {
 
-  int res = 0;
+  int res = SUCCESS;
 
   struct dirent *de;
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char ab_del_path[MAX_PATH_LEN] = {0};
+  char new_path[MAX_PATH_LEN] = {0};
 
   struct fuse_file_info dir_fi;
 
@@ -574,10 +576,31 @@ static int dedupe_fs_rmdir(const char *path) {
   }
 
   while((de = readdir(dir_fi.fh)) != NULL) {
-    if(SUCCESS == strcmp(de->d_name, ".") ||
-        SUCCESS == strcmp(de->d_name, "..")) {
+
+    if((SUCCESS == strcmp(de->d_name, ".")) ||
+        (SUCCESS == strcmp(de->d_name, "..")) ||
+        (NULL != strstr(de->d_name, BITMAP_FILE))) {
       continue;
     }
+
+    strcpy(new_path, ab_path);
+    strcat(new_path, "/");
+    strcat(new_path, de->d_name);
+
+    if(NULL == strstr(new_path, DELETE_FILE)) {
+      res = -ENOTEMPTY;
+      break;
+    }
+
+  }
+
+  internal_releasedir(ab_path, &dir_fi);
+
+  if(SUCCESS == res) {
+    strcpy(ab_del_path, ab_path);
+    strcat(ab_del_path, DELETE_FILE);
+
+    internal_rename(ab_path, ab_del_path);
   }
 
 #ifdef DEBUG

@@ -65,7 +65,7 @@ int internal_read(const char *path, char *buf, size_t size, off_t offset, struct
 
 int internal_opendir(const char *path, struct fuse_file_info *fi) {
 
-  int res = 0;
+  int res = SUCCESS;
   char out_buf[BUF_LEN] = {0};
 
   DIR *dp;
@@ -571,6 +571,7 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   dedupe_fs_metadata_path(meta_path, path);
   dedupe_fs_filestore_path(ab_path, path);
 
+  printf("path [%s] ab_path [%s]\n", path, ab_path);
   fi.flags = O_RDONLY;
   res = internal_open(ab_path, &fi);
   if(res < 0) {
@@ -669,6 +670,89 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
 #endif
 
   return SUCCESS;
+}
+
+int internal_rmdir_dir(const char *path) {
+
+  int res = 0;
+
+  struct dirent *de;
+
+  char *ab_del_path_end = NULL;
+
+  char out_buf[BUF_LEN] = {0};
+  char ab_path[MAX_PATH_LEN] = {0};
+  char ab_del_path[MAX_PATH_LEN] = {0};
+
+  struct fuse_file_info dir_fi;
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  dedupe_fs_filestore_path(ab_path, path);
+
+  res = internal_opendir(ab_path, &dir_fi);
+  if(res < 0) {
+    return res;
+  }
+
+  while((de = readdir(dir_fi.fh)) != NULL) {
+
+#ifdef _DIRENT_HAVE_D_TYPE
+
+    if((SUCCESS == strcmp(de->d_name, ".")) ||
+        (SUCCESS == strcmp(de->d_name, "..")) ||
+        (NULL != strstr(de->d_name, BITMAP_FILE))) {
+      continue;
+    }
+
+    strcpy(ab_del_path, path);
+    strcat(ab_del_path, "/");
+    strcat(ab_del_path, de->d_name);
+
+    printf("1 del_path [%s]\n", ab_del_path);
+    if(DT_DIR == de->d_type) {
+
+      if((ab_del_path_end = strstr(ab_del_path, DELETE_FILE)) != NULL) {
+
+        internal_rmdir_dir(ab_del_path);
+
+      } else {
+        sprintf(out_buf, "[%s] Trying to delete dir [%s]\n", __FUNCTION__, ab_del_path);
+        WR_2_STDOUT;
+        ABORT;
+      }
+    } else {
+
+      if((ab_del_path_end = strstr(ab_del_path, DELETE_FILE)) != NULL) {
+
+        *ab_del_path_end = '\0';
+        printf("2 del_path [%s]\n", ab_del_path);
+        internal_unlink_file(ab_del_path, TRUE, FALSE);
+
+      } else {
+        sprintf(out_buf, "[%s] Trying to delete file [%s]\n", __FUNCTION__, ab_del_path);
+        WR_2_STDOUT;
+        ABORT;
+      }
+    }
+
+#endif
+  }
+
+  internal_releasedir(ab_path, &dir_fi);
+
+  internal_rmdir(ab_path);
+
+#ifdef DEBUG
+  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  WR_2_STDOUT;
+#endif
+
+  return SUCCESS;
+
 }
 
 int internal_truncate(const char *path, off_t newsize) {
