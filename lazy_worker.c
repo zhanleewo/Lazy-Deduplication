@@ -437,22 +437,23 @@ void process_initial_file_store(char *path) {
       if((new_f_path_end = strstr(new_f_path, DELETE_FILE)) != NULL) {
 
         internal_rmdir_dir(new_f_path);
-      }
+      } else {
 
-      strcpy(meta_path, dedupe_metadata);
-      strcat(meta_path, new_path);
-
-      res = internal_getattr(meta_path, &meta_d_stbuf);
-
-      if(-ENOENT == res) {
-
-        res = internal_mkdir(meta_path, stbuf.st_mode);
-        if(res < 0) {
-          ABORT;
+        strcpy(meta_path, dedupe_metadata);
+        strcat(meta_path, new_path);
+       
+        res = internal_getattr(meta_path, &meta_d_stbuf);
+       
+        if(-ENOENT == res) {
+       
+          res = internal_mkdir(meta_path, stbuf.st_mode);
+          if(res < 0) {
+            ABORT;
+          }
         }
+       
+        process_initial_file_store(new_path);
       }
-
-      process_initial_file_store(new_path);
 
     } else {
 
@@ -460,12 +461,10 @@ void process_initial_file_store(char *path) {
       strcat(new_f_path, "/");
       strcat(new_f_path, de->d_name);
 
-      if((new_f_path_end = strstr(new_f_path, DELETE_FILE)) != NULL) {
+      if((new_f_path_end = strrstr(new_f_path, DELETE_FILE)) != NULL) {
         *new_f_path_end = '\0';
 
-        printf("HEREE 1\n");
         internal_unlink_file(new_f_path, TRUE, FALSE);
-        printf("HEREE 2\n");
       }
       else if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
 

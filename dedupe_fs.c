@@ -108,6 +108,18 @@ void stbuf2char(char *stat_buf, struct stat *stbuf) {
     stbuf->st_ctime);
 }
 
+char * strrstr(char *str, const char *substr) {
+  char *head = NULL, *tail = NULL;
+
+  head = str;
+  while((head = strstr(head, substr)) != NULL) {
+    tail = head;
+    head++; 
+  }
+
+  return tail;
+}
+
 static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
   int res = 0, fsize = 0;
@@ -528,7 +540,9 @@ static int dedupe_fs_unlink(const char *path) {
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
   char ab_del_path[MAX_PATH_LEN] = {0};
+  char meta_del_path[MAX_PATH_LEN] = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -536,11 +550,15 @@ static int dedupe_fs_unlink(const char *path) {
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
+  dedupe_fs_metadata_path(meta_path, path);
 
   dedupe_fs_filestore_path(ab_del_path, path);
+  dedupe_fs_metadata_path(meta_del_path, path);
   strcat(ab_del_path, DELETE_FILE);
+  strcat(meta_del_path, DELETE_FILE);
 
   res = internal_rename(ab_path, ab_del_path);
+  res = internal_rename(meta_path, meta_del_path);
 
   #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -558,7 +576,10 @@ static int dedupe_fs_rmdir(const char *path) {
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
   char ab_del_path[MAX_PATH_LEN] = {0};
+  char meta_del_path[MAX_PATH_LEN] = {0};
+
   char new_path[MAX_PATH_LEN] = {0};
 
   struct fuse_file_info dir_fi;
@@ -569,6 +590,7 @@ static int dedupe_fs_rmdir(const char *path) {
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
+  dedupe_fs_metadata_path(meta_path, path);
 
   res = internal_opendir(ab_path, &dir_fi);
   if(res < 0) {
@@ -600,7 +622,11 @@ static int dedupe_fs_rmdir(const char *path) {
     strcpy(ab_del_path, ab_path);
     strcat(ab_del_path, DELETE_FILE);
 
+    strcpy(meta_del_path, meta_path);
+    strcat(meta_del_path, DELETE_FILE);
+
     internal_rename(ab_path, ab_del_path);
+    internal_rename(meta_path, meta_del_path);
   }
 
 #ifdef DEBUG

@@ -577,6 +577,7 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   if(res < 0) {
 
     strcat(ab_path, DELETE_FILE);
+    printf("[%s] Trying to open [%s]\n", __FUNCTION__, ab_path);
     res = internal_open(ab_path, &fi);
     if(res < 0) {
       ABORT;
@@ -590,6 +591,13 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   meta_fi.flags = O_RDONLY;
   res = internal_open(meta_path, &meta_fi);
   if(res < 0) {
+    strcat(meta_path, DELETE_FILE);
+    printf("[%s] Trying to open [%s]\n", __FUNCTION__, meta_path);
+    res = internal_open(meta_path, &meta_fi);
+    if(res < 0) {
+    } else {
+      meta_found = TRUE;
+    }
   } else {
     meta_found = TRUE;
   }
@@ -641,6 +649,7 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
 
     if(TRUE == meta_found) {
       res = internal_unlink(meta_path);
+      printf("[%s] deleted [%s]\n", __FUNCTION__, meta_path);
       if(res < 0) {
         return res;
       }
@@ -682,6 +691,7 @@ int internal_rmdir_dir(const char *path) {
 
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
+  char meta_path[MAX_PATH_LEN] = {0};
   char ab_del_path[MAX_PATH_LEN] = {0};
 
   struct fuse_file_info dir_fi;
@@ -692,6 +702,7 @@ int internal_rmdir_dir(const char *path) {
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
+  dedupe_fs_metadata_path(meta_path, path);
 
   res = internal_opendir(ab_path, &dir_fi);
   if(res < 0) {
@@ -715,7 +726,7 @@ int internal_rmdir_dir(const char *path) {
     printf("1 del_path [%s]\n", ab_del_path);
     if(DT_DIR == de->d_type) {
 
-      if((ab_del_path_end = strstr(ab_del_path, DELETE_FILE)) != NULL) {
+      if((ab_del_path_end = strrstr(ab_del_path, DELETE_FILE)) != NULL) {
 
         internal_rmdir_dir(ab_del_path);
 
@@ -726,7 +737,7 @@ int internal_rmdir_dir(const char *path) {
       }
     } else {
 
-      if((ab_del_path_end = strstr(ab_del_path, DELETE_FILE)) != NULL) {
+      if((ab_del_path_end = strrstr(ab_del_path, DELETE_FILE)) != NULL) {
 
         *ab_del_path_end = '\0';
         printf("2 del_path [%s]\n", ab_del_path);
@@ -745,6 +756,7 @@ int internal_rmdir_dir(const char *path) {
   internal_releasedir(ab_path, &dir_fi);
 
   internal_rmdir(ab_path);
+  internal_rmdir(meta_path);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
