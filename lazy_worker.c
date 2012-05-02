@@ -391,6 +391,7 @@ void process_initial_file_store(char *path) {
   char meta_path[MAX_PATH_LEN] = {0};
 
   char ab_f_path[MAX_PATH_LEN] = {0};
+  char ab_del_f_path[MAX_PATH_LEN] = {0};
   char new_f_path[MAX_PATH_LEN] = {0};
   char meta_f_path[MAX_PATH_LEN] = {0};
 
@@ -476,11 +477,17 @@ void process_initial_file_store(char *path) {
         strcpy(meta_f_path, dedupe_metadata);
         strcat(meta_f_path, new_f_path);
 
+        strcpy(ab_del_f_path, ab_f_path);
+        strcat(ab_del_f_path, DELETE_FILE);
+        res = internal_getattr(ab_del_f_path, &ab_f_stbuf);
+        if(SUCCESS == res) {
+          continue;
+        }
+
         res = internal_getattr(meta_f_path, &meta_f_stbuf);
 
         if(-ENOENT == res) {
 
-          /* Careful with the last block updation */
           res = internal_getattr(ab_f_path, &ab_f_stbuf);
           if(res < 0) {
             ABORT;

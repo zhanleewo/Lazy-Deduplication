@@ -36,8 +36,8 @@ int internal_read(const char *path, char *buf, size_t size, off_t offset, struct
   char out_buf[BUF_LEN] = {0};
 
 #ifdef DEBUG
-  sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
-  WR_2_STDOUT;
+  //sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
+  //WR_2_STDOUT;
 #endif
 
   if(FALSE == locked) {
@@ -56,8 +56,8 @@ int internal_read(const char *path, char *buf, size_t size, off_t offset, struct
   }
 
 #ifdef DEBUG
-  sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
-  WR_2_STDOUT;
+  //sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
+  //WR_2_STDOUT;
 #endif
 
   return res;
@@ -481,11 +481,12 @@ int internal_unlink_hash_block(const char *sha1) {
     memset(remove_path,'\0', MAX_PATH_LEN);
 
     strncpy(remove_path, dir_srchstr, strlen(dedupe_hashes)+18);
-    remove_path[18] = '\0';
+    remove_path[strlen(dedupe_hashes)+18] = '\0';
 
     isempty = internal_isdirempty(remove_path);
     if(isempty == TRUE) {
 
+      printf("deleting [%s]\n", remove_path);
       res = internal_rmdir(remove_path);
       if(res < 0) {
         exit(errno);
@@ -502,10 +503,11 @@ int internal_unlink_hash_block(const char *sha1) {
     memset(remove_path,'\0', MAX_PATH_LEN);
 
     strncpy(remove_path, dir_srchstr, strlen(dedupe_hashes)+9);
-    remove_path[9] = '\0';
+    remove_path[strlen(dedupe_hashes)+9] = '\0';
 
     isempty = internal_isdirempty(remove_path);
     if(isempty == TRUE)  {
+      printf("deleting [%s]\n", remove_path);
       res = internal_rmdir(remove_path);
       if(res < 0) {
          exit(errno);
@@ -522,10 +524,11 @@ int internal_unlink_hash_block(const char *sha1) {
     memset(remove_path,'\0', MAX_PATH_LEN);
 
     strncpy(remove_path, dir_srchstr, strlen(dedupe_hashes)+4);
-    remove_path[4]='\0';
+    remove_path[strlen(dedupe_hashes)+4]='\0';
 
     isempty = internal_isdirempty(remove_path);
     if(isempty == TRUE)  {
+      printf("deleting [%s]\n", remove_path);
       res = internal_rmdir(remove_path);
       if(res < 0) {
          exit(errno);
