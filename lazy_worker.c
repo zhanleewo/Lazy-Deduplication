@@ -84,7 +84,7 @@ void updates_handler(const char *path) {
   if(NULL == new_f_path_end) {
     sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, ab_f_path, BITMAP_FILE);
     WR_2_STDOUT;
-    ABORT;
+    return;
   }
   *new_f_path_end = NULL;
 
@@ -92,7 +92,7 @@ void updates_handler(const char *path) {
   if(NULL == meta_f_path_end) {
     sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, meta_path, BITMAP_FILE);
     WR_2_STDOUT;
-    ABORT;
+    return;
   }
   *meta_f_path_end = NULL;
 
@@ -102,7 +102,7 @@ void updates_handler(const char *path) {
   if(NULL == del_f_path_end) {
     sprintf(out_buf, "[%s] [%s] not a %s filetype\n", __FUNCTION__, del_path, BITMAP_FILE);
     WR_2_STDOUT;
-    ABORT;
+    return;
   }
   *del_f_path_end = NULL;
 
@@ -112,7 +112,7 @@ void updates_handler(const char *path) {
   bitmap_fi.flags = O_RDWR;
   res = internal_open(ab_path, &bitmap_fi);
   if(res < 0) {
-    ABORT;
+    return;
   }
 
   btmap = (unsigned int *) mmap(NULL, BITMAP_LEN, 
@@ -120,8 +120,7 @@ void updates_handler(const char *path) {
   if(btmap == MAP_FAILED) {
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
-    res = -errno;
-    return res;
+    return;
   }
 
   internal_release(path, &bitmap_fi);
@@ -129,7 +128,7 @@ void updates_handler(const char *path) {
   ab_fi.flags = O_RDONLY;
   res = internal_open(ab_f_path, &ab_fi);
   if(res < 0) {
-    ABORT;
+    return;
   }
 
   dedupe_fs_lock(ab_f_path, ab_fi.fh);
@@ -142,38 +141,43 @@ void updates_handler(const char *path) {
 
     res = munmap(btmap, BITMAP_LEN);
     if(FAILED == res) {
-      ABORT;
+      ;
     }
     return;
   }
 
   res = internal_getattr(ab_f_path, &ab_f_stbuf);
   if(res < 0) {
-    ABORT;
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    return;
   }
 
   res = internal_getattr(meta_path, &meta_stbuf);
   if(res < 0) {
-    ABORT;
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    return;
   }
 
   meta_fi.flags = O_RDONLY;
   res = internal_open(meta_path, &meta_fi);
   if(res < 0) {
-    ABORT;
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    return;
   }
 
   memset(stat_buf, 0, STAT_LEN);
   res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
   if(res <= 0) {
-    ABORT;
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    return;
   }
 
   char2stbuf(stat_buf, &metadata_stbuf);
 
   res = internal_create(new_meta_path, 0600, &new_meta_fi);
   if(res < 0) {
-    ABORT;
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    return;
   }
 
   new_meta_off = STAT_LEN;
@@ -202,7 +206,8 @@ void updates_handler(const char *path) {
 
         res = internal_read(ab_f_path, data_buf+read, MINCHUNK, cur_block_off, &ab_fi, TRUE);
         if(res <= 0) {
-          ABORT;
+          dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+          return;
         }
 
         read += res;
@@ -233,7 +238,8 @@ void updates_handler(const char *path) {
           memset(hash_line, 0, OFF_HASH_LEN);
           res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
           if(res <= 0) {
-            ABORT;
+            dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+            return;
           }
 
           st = strtok_r(hash_line, ":", &saveptr);
@@ -254,17 +260,20 @@ void updates_handler(const char *path) {
             hash_fi.flags = O_RDONLY;
             res = internal_open(srchstr, &hash_fi);
             if(res < 0) {
-              ABORT;
+              dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+              return;
             }
 
             r_cnt = internal_read(srchstr, data_buf+read, toread, cur_block_off-st_hash_off, &hash_fi, FALSE);
             if(r_cnt < 0) {
-              ABORT;
+              dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+              return;
             }
          
             res = internal_release(srchstr, &hash_fi);
             if(res < 0) {
-              ABORT;
+              dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+              return;
             }
      
             toread -= r_cnt;
@@ -347,7 +356,8 @@ void updates_handler(const char *path) {
 
   res = internal_rename(new_meta_path, meta_path);
   if(res < 0) {
-    ABORT;
+    dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    return;
   }
 
   /* Truncate the file in the filestore */
@@ -361,7 +371,7 @@ void updates_handler(const char *path) {
 
   res = munmap(btmap, BITMAP_LEN);
   if(FAILED == res) {
-    ABORT;
+    return;
   }
 
 #ifdef DEBUG
@@ -449,10 +459,10 @@ void process_initial_file_store(char *path) {
        
           res = internal_mkdir(meta_path, stbuf.st_mode);
           if(res < 0) {
-            ABORT;
+            continue;
           }
         }
-       
+
         process_initial_file_store(new_path);
       }
 
@@ -490,18 +500,18 @@ void process_initial_file_store(char *path) {
 
           res = internal_getattr(ab_f_path, &ab_f_stbuf);
           if(res < 0) {
-            ABORT;
+            continue;
           }
 
           res = internal_mknod(meta_f_path, ab_f_stbuf.st_mode, 0); 
           if(res < 0) {
-            ABORT;
+            continue;
           }
          
           fi.flags = O_WRONLY;
           res = internal_open(meta_f_path, &fi);
           if(res < 0) {
-            ABORT;
+            continue;
           }
          
           memset(&stat_buf, 0, STAT_LEN);
@@ -511,7 +521,7 @@ void process_initial_file_store(char *path) {
 
           res = internal_write(meta_f_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
           if(res < 0) {
-            ABORT;
+            continue;
           }
          
           if(ab_f_stbuf.st_size > 0) {
@@ -525,18 +535,18 @@ void process_initial_file_store(char *path) {
               sprintf(out_buf, "[%s] Rabin-Karp finger-printing failed on [%s]\n", __FUNCTION__, new_path);
               WR_2_STDOUT;
               //TODO decide if return or abort
-              ABORT;
+              continue;
             }
           }
          
           res = internal_release(meta_f_path, &fi);
           if(res < 0) {
-            ABORT;
+            continue;
           }
          
           res = internal_truncate(ab_f_path, (off_t)0);
           if(res < 0) {
-            ABORT;
+            continue;
           }
 
         } else {
@@ -570,6 +580,6 @@ void *lazy_worker_thread(void *arg) {
 
     process_initial_file_store("");
 
-    sleep(20);
+    sleep(DEDUPE_PASS_TIMEOUT);
   }
 }

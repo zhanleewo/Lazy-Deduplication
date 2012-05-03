@@ -574,7 +574,6 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   dedupe_fs_metadata_path(meta_path, path);
   dedupe_fs_filestore_path(ab_path, path);
 
-  printf("path [%s] ab_path [%s]\n", path, ab_path);
   fi.flags = O_RDONLY;
   res = internal_open(ab_path, &fi);
   if(res < 0) {
@@ -583,7 +582,7 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
     printf("[%s] Trying to open [%s]\n", __FUNCTION__, ab_path);
     res = internal_open(ab_path, &fi);
     if(res < 0) {
-      ABORT;
+      return res;
     }
   }
 
@@ -608,12 +607,18 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   if(TRUE == meta_found) {
     res = internal_getattr(meta_path, &meta_stbuf);
     if(res < 0) {
-      ABORT;
+      if(FALSE == lk_flag) {
+        dedupe_fs_unlock(ab_path, fi.fh);
+      }
+      return res;
     }
  
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
     if(res < 0) {
-      ABORT;
+      if(FALSE == lk_flag) {
+        dedupe_fs_unlock(ab_path, fi.fh);
+      }
+      return res;
     }
  
     meta_f_readcnt += STAT_LEN;
@@ -625,6 +630,9 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
       memset(hash_line, 0, OFF_HASH_LEN);
       res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
       if(res < 0) {
+        if(FALSE == lk_flag) {
+          dedupe_fs_unlock(ab_path, fi.fh);
+        }
         return res;
       }
  
@@ -636,6 +644,9 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
  
       res = internal_unlink_hash_block(sha1);
       if(res < 0) {
+        if(FALSE == lk_flag) {
+          dedupe_fs_unlock(ab_path, fi.fh);
+        }
         return res;
       }
       meta_f_readcnt += OFF_HASH_LEN;
@@ -644,7 +655,10 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
  
     res = internal_release(meta_path, &meta_fi);
     if(res < 0) {
-       ABORT;
+      if(FALSE == lk_flag) {
+        dedupe_fs_unlock(ab_path, fi.fh);
+      }
+      return res;
     }
   }
 
@@ -654,6 +668,9 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
       res = internal_unlink(meta_path);
       printf("[%s] deleted [%s]\n", __FUNCTION__, meta_path);
       if(res < 0) {
+        if(FALSE == lk_flag) {
+          dedupe_fs_unlock(ab_path, fi.fh);
+        }
         return res;
       }
     }
@@ -663,12 +680,18 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
  
     res = internal_unlink(bitmap_file_path);
     if(res < 0) {
-       return res;
+      if(FALSE == lk_flag) {
+        dedupe_fs_unlock(ab_path, fi.fh);
+      }
+      return res;
     }
 
     res = internal_unlink(ab_path);
     if(res < 0) {
-       return res;
+      if(FALSE == lk_flag) {
+        dedupe_fs_unlock(ab_path, fi.fh);
+      }
+      return res;
     }
   }
 
@@ -726,7 +749,6 @@ int internal_rmdir_dir(const char *path) {
     strcat(ab_del_path, "/");
     strcat(ab_del_path, de->d_name);
 
-    printf("1 del_path [%s]\n", ab_del_path);
     if(DT_DIR == de->d_type) {
 
       if((ab_del_path_end = strrstr(ab_del_path, DELETE_FILE)) != NULL) {
@@ -743,7 +765,6 @@ int internal_rmdir_dir(const char *path) {
       if((ab_del_path_end = strrstr(ab_del_path, DELETE_FILE)) != NULL) {
 
         *ab_del_path_end = '\0';
-        printf("2 del_path [%s]\n", ab_del_path);
         internal_unlink_file(ab_del_path, TRUE, FALSE);
 
       } else {

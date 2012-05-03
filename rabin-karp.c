@@ -322,7 +322,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   fi.flags = O_RDONLY;
   res = internal_open(filestore_path, &fi);
   if(res < 0) {
-    ABORT;
+    return res;
   }
 
   strcpy(bitmap_file_path, filestore_path);
@@ -355,7 +355,8 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       dedupe_fs_lock(filestore_path, fi.fh);
       res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi, TRUE);
       if(res < 0) {
-        ABORT;
+        dedupe_fs_unlock(filestore_path, fi.fh);
+        return res;
       }
 
       read_off += res;
@@ -474,11 +475,11 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
 
   res = munmap(btmap, BITMAP_LEN);
   if(FAILED == res) {
-    ABORT;
+    return res;
   }
 
   res = internal_release(filestore_path, &fi);
   if(res < 0) {
-    ABORT;
+    return res;
   }
 }
