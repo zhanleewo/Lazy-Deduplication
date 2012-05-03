@@ -562,8 +562,8 @@ static int dedupe_fs_unlink(const char *path) {
   strcat(ab_del_path, DELETE_FILE);
   strcat(meta_del_path, DELETE_FILE);
 
-  res = internal_rename(ab_path, ab_del_path);
   res = internal_rename(meta_path, meta_del_path);
+  res = internal_rename(ab_path, ab_del_path);
 
   #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -630,8 +630,8 @@ static int dedupe_fs_rmdir(const char *path) {
     strcpy(meta_del_path, meta_path);
     strcat(meta_del_path, DELETE_FILE);
 
-    internal_rename(ab_path, ab_del_path);
     internal_rename(meta_path, meta_del_path);
+    internal_rename(ab_path, ab_del_path);
   }
 
 #ifdef DEBUG
