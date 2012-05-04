@@ -182,12 +182,14 @@ static int dedupe_fs_getattr(const char *path, struct stat *stbuf) {
 
       res = internal_read(bitmap_path, filesize, FILESIZE_LEN, (off_t)(sizeof(int)*NUM_BITMAP_WORDS), &bitmap_fi, FALSE);
       if(res < 0) {
+        internal_release(bitmap_path, &bitmap_fi);
         return res;
       }
 
       fi.flags = O_RDONLY;
       res = internal_open(meta_path, &fi);
       if(res < 0) {
+        internal_release(bitmap_path, &bitmap_fi);
         return res;
       }
 
@@ -448,6 +450,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
   res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res <= 0) {
+    internal_release(meta_path, &fi);
     return res;
   }
 
@@ -460,6 +463,7 @@ static int dedupe_fs_chmod(const char *path, mode_t mode) {
 
   res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res < 0) {
+    internal_release(meta_path, &fi);
     return res;
   }
 
@@ -511,6 +515,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 
   res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res <= 0) {
+    internal_release(meta_path, &fi);
     return res;
   }
 
@@ -523,6 +528,7 @@ static int dedupe_fs_chown(const char *path, uid_t uid, gid_t gid) {
 
   res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
   if(res < 0) {
+    internal_release(meta_path, &fi);
     return res;
   }
 
@@ -546,8 +552,10 @@ static int dedupe_fs_unlink(const char *path) {
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
+  char bitmap_path[MAX_PATH_LEN] = {0};
   char ab_del_path[MAX_PATH_LEN] = {0};
   char meta_del_path[MAX_PATH_LEN] = {0};
+  char bitmap_del_path[MAX_PATH_LEN] = {0};
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] entry\n", __FUNCTION__);
@@ -555,14 +563,21 @@ static int dedupe_fs_unlink(const char *path) {
 #endif
 
   dedupe_fs_filestore_path(ab_path, path);
+  dedupe_fs_filestore_path(bitmap_path, path);
   dedupe_fs_metadata_path(meta_path, path);
+
+  strcat(bitmap_path, BITMAP_FILE);
 
   dedupe_fs_filestore_path(ab_del_path, path);
   dedupe_fs_metadata_path(meta_del_path, path);
+
   strcat(ab_del_path, DELETE_FILE);
   strcat(meta_del_path, DELETE_FILE);
+  strcpy(bitmap_del_path, bitmap_path);
+  strcat(bitmap_del_path, DELETE_FILE);
 
   res = internal_rename(meta_path, meta_del_path);
+  res = internal_rename(bitmap_path, bitmap_del_path);
   res = internal_rename(ab_path, ab_del_path);
 
   #ifdef DEBUG
@@ -736,12 +751,15 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   bitmap_fi.flags = O_RDWR;
   res = internal_open(bitmap_file_path, &bitmap_fi);
   if(res < 0) {
+    internal_release(ab_path, fi);
     return res;
   }
 
   bitmap = (unsigned int *) mmap(NULL, BITMAP_LEN, 
       PROT_READ | PROT_WRITE, MAP_SHARED, bitmap_fi.fh, (off_t)0);
   if(bitmap == MAP_FAILED) {
+    internal_release(ab_path, fi);
+    internal_release(bitmap_file_path, &bitmap_fi);
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_file_path);
     perror(out_buf);
     res = -errno;
@@ -749,6 +767,8 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   }
 
   internal_release(bitmap_file_path, &bitmap_fi);
+
+  printf("open path [%s] mmap region [%p]\n", path, bitmap);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -809,6 +829,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
     if(res <= 0) {
+      internal_release(meta_path, &meta_fi);
       dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
@@ -821,6 +842,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
 
     res = internal_getattr(ab_path, &stbuf);
     if(res < 0) {
+      internal_release(meta_path, &meta_fi);
       dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
@@ -857,6 +879,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
  
       r_cnt = internal_read(ab_path, buf+read, hash_read, req_off, fi, TRUE);
       if(r_cnt <= 0) {
+        internal_release(meta_path, &meta_fi);
         dedupe_fs_unlock(ab_path, fi->fh);
         return (read+r_cnt);
       }
@@ -879,6 +902,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
         memset(hash_line, 0, OFF_HASH_LEN);
         res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
         if(res <= 0) {
+          internal_release(meta_path, &meta_fi);
           dedupe_fs_unlock(ab_path, fi->fh);
           return read;
         }
@@ -901,18 +925,22 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
           hash_fi.flags = O_RDONLY;
           res = internal_open(srchstr, &hash_fi);
           if(res < 0) {
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return read;
           }
   
           r_cnt = internal_read(srchstr, buf+read, hash_read, req_off-st_off, &hash_fi, FALSE);
           if(r_cnt <= 0) {
+            internal_release(meta_path, &meta_fi);
+            internal_release(srchstr, &hash_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return read;
           }
   
           res = internal_release(srchstr, &hash_fi);
           if(res < 0) {
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return read;
           }
@@ -1006,7 +1034,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
   WR_2_STDOUT;
 #endif
 
-  printf("[%s] path [%s] size [%ld] off [%ld]\n", __FUNCTION__, path, size, offset);
+  printf("[%s] path [%s] size [%ld] off [%lld] bitmap [%p]\n", __FUNCTION__, path, size, offset, bitmap);
 
   /*
      Modify the file stats here, esp the st_size
@@ -1036,6 +1064,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
     if(res <= 0) {
+      internal_release(meta_path, &meta_fi);
       dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
@@ -1064,6 +1093,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
         memset(hash_line, 0, OFF_HASH_LEN);
         res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
         if(res <= 0) {
+          internal_release(meta_path, &meta_fi);
           dedupe_fs_unlock(ab_path, fi->fh);
           return res;
         }
@@ -1086,18 +1116,22 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
           hash_fi.flags = O_RDONLY;
           res = internal_open(srchstr, &hash_fi);
           if(res < 0) {
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
 
           r_cnt = internal_read(srchstr, write_buf+read, req_off_len, req_off_st-st_off, &hash_fi, FALSE);
           if(r_cnt <= 0) {
+            internal_release(srchstr, &hash_fi);
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
 
           res = internal_release(srchstr, &hash_fi);
           if(res < 0) {
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
@@ -1153,6 +1187,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
         memset(hash_line, 0, OFF_HASH_LEN);
         res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
         if(res <= 0) {
+          internal_release(meta_path, &meta_fi);
           dedupe_fs_unlock(ab_path, fi->fh);
           return res;
         }
@@ -1174,18 +1209,22 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
           hash_fi.flags = O_RDONLY;
           res = internal_open(srchstr, &hash_fi);
           if(res < 0) {
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
  
           r_cnt = internal_read(srchstr, write_buf+read, req_size_len, req_size_st-st_off, &hash_fi, FALSE);
           if(r_cnt <= 0) {
+            internal_release(srchstr, &hash_fi);
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
 
           res = internal_release(srchstr, &hash_fi);
           if(res < 0) {
+            internal_release(meta_path, &meta_fi);
             dedupe_fs_unlock(ab_path, fi->fh);
             return res;
           }
@@ -1206,6 +1245,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
     res = internal_write(ab_path, write_buf, write_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
     if(res < 0) {
+      internal_release(meta_path, &meta_fi);
       dedupe_fs_unlock(ab_path, fi->fh);
       return res;
     }
@@ -1258,15 +1298,17 @@ static int dedupe_fs_release(const char *path, struct fuse_file_info *fi) {
   WR_2_STDOUT;
 #endif
 
+  printf("[%s] releasing path [%s] map region [%p]...\n", __FUNCTION__, path, bitmap);
+
   res = munmap((void*)bitmap, BITMAP_LEN);
   if(res < 0) {
     res = -errno;
-    return res;
   }
 
-  printf("File Unmaped\n");
+  sprintf(out_buf, "[%s] File Unmaped\n", __FUNCTION__);
+  perror(out_buf);
 
-  res = close(fi->fh);
+  close(fi->fh);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -1358,13 +1400,17 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   bitmap_fi.flags = O_WRONLY;
   res = internal_open(bitmap_path, &bitmap_fi);
   if(res < 0) {
+    internal_release(meta_path, &meta_fi);
     dedupe_fs_unlock(ab_path, fi.fh);
+    internal_release(ab_path, &fi);
     return res;
   }
 
   res = internal_write(bitmap_path, &newsize, FILESIZE_LEN, (off_t)(sizeof(int)*NUM_BITMAP_WORDS), &bitmap_fi, FALSE);
   if(res < 0) {
+    internal_release(meta_path, &meta_fi);
     dedupe_fs_unlock(ab_path, fi.fh);
+    internal_release(ab_path, &fi);
     return res;
   }
 
@@ -1376,7 +1422,9 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi);
     if(res < 0) {
+      internal_release(meta_path, &meta_fi);
       dedupe_fs_unlock(ab_path, fi.fh);
+      internal_release(ab_path, &fi);
       return res;
     }
 
@@ -1393,6 +1441,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     if(res < 0) {
       internal_release(meta_path, &meta_fi);
       dedupe_fs_unlock(ab_path, fi.fh);
+      internal_release(ab_path, &fi);
       return res;
     }
  
@@ -1487,10 +1536,13 @@ static int dedupe_fs_create(const char *path, mode_t mode, struct fuse_file_info
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_file_path);
     perror(out_buf);
     res = -errno;
+    internal_release(bitmap_file_path, &bitmap_fi);
     return res;
   }
 
   internal_release(bitmap_file_path, &bitmap_fi);
+
+  printf("create path [%s] mmap region [%p]\n", path, bitmap);
 
   bitmap[NUM_BITMAP_WORDS] = (unsigned int)-1;
 

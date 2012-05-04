@@ -331,11 +331,14 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
   bitmap_fi.flags = O_RDWR;
   res = internal_open(bitmap_file_path, &bitmap_fi);
   if(res < 0) {
+    internal_release(filestore_path, &fi);
     return res;
   }
 
   btmap = (unsigned int *) mmap(NULL, BITMAP_LEN, PROT_READ | PROT_WRITE, MAP_SHARED, bitmap_fi.fh, (off_t)0);
   if(btmap == MAP_FAILED) {
+    internal_release(filestore_path, &fi);
+    internal_release(bitmap_file_path, &bitmap_fi);
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_file_path);
     perror(out_buf);
     res = -errno;
@@ -356,6 +359,7 @@ int compute_rabin_karp(char *filestore_path, file_args *f_args, struct stat *stb
       res = internal_read(filestore_path, filedata + old_data_len, nbytes, read_off, &fi, TRUE);
       if(res < 0) {
         dedupe_fs_unlock(filestore_path, fi.fh);
+        internal_release(filestore_path, &fi);
         return res;
       }
 

@@ -432,12 +432,13 @@ int internal_unlink_hash_block(const char *sha1) {
   nlinks_fi.flags = O_RDWR;
   res = internal_open(nlinks_path, &nlinks_fi);
   if(res < 0) {
-    exit(errno);
+    return res;
   }
  
   res = internal_read(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
   if(res < 0) {
-    exit(errno);
+    internal_release(nlinks_path, &nlinks_fi);
+    return res;
   }
 
   sscanf(nlinks_cnt, "%d", &nlinks_num);
@@ -447,35 +448,29 @@ int internal_unlink_hash_block(const char *sha1) {
 
   res = internal_write(nlinks_path, nlinks_cnt, NLINKS_WIDTH, (off_t)0, &nlinks_fi, FALSE);
   if(res < 0) {
-    exit(errno);
+    internal_release(nlinks_path, &nlinks_fi);
+    return res;
   }
 
   if(nlinks_num > FALSE) {
     res = internal_release(nlinks_path, &nlinks_fi);
-    if(res < 0) {
-        exit(errno);
-    }
   }
   else {
     res = internal_unlink(file_chunk_path);
     if(res < 0) {
-      exit(errno);
-   }
-
-    res = internal_release(nlinks_path, &nlinks_fi);
-    if(res < 0) {
-      exit(errno);
+      internal_release(nlinks_path, &nlinks_fi);
+      return res;
     }
+
+    internal_release(nlinks_path, &nlinks_fi);
 
     res = internal_unlink(nlinks_path);
     if(res < 0) {
-      exit(errno);
     }
 
     /* Delete the dir containing the current sha1 block and nlinks */
     res = internal_rmdir(dir_srchstr);
     if(res < 0) {
-      exit(errno);
     }
 
     memset(remove_path,'\0', MAX_PATH_LEN);
@@ -489,7 +484,6 @@ int internal_unlink_hash_block(const char *sha1) {
       printf("deleting [%s]\n", remove_path);
       res = internal_rmdir(remove_path);
       if(res < 0) {
-        exit(errno);
       }
     }
     else {
@@ -510,7 +504,6 @@ int internal_unlink_hash_block(const char *sha1) {
       printf("deleting [%s]\n", remove_path);
       res = internal_rmdir(remove_path);
       if(res < 0) {
-         exit(errno);
       }
     }
     else {
@@ -531,7 +524,6 @@ int internal_unlink_hash_block(const char *sha1) {
       printf("deleting [%s]\n", remove_path);
       res = internal_rmdir(remove_path);
       if(res < 0) {
-         exit(errno);
       }
     }
   }
@@ -607,17 +599,21 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   if(TRUE == meta_found) {
     res = internal_getattr(meta_path, &meta_stbuf);
     if(res < 0) {
+      internal_release(meta_path, &meta_fi);
       if(FALSE == lk_flag) {
         dedupe_fs_unlock(ab_path, fi.fh);
       }
+      internal_release(ab_path, &fi);
       return res;
     }
  
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, TRUE);
     if(res < 0) {
+      internal_release(meta_path, &meta_fi);
       if(FALSE == lk_flag) {
         dedupe_fs_unlock(ab_path, fi.fh);
       }
+      internal_release(ab_path, &fi);
       return res;
     }
  
@@ -630,9 +626,11 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
       memset(hash_line, 0, OFF_HASH_LEN);
       res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, TRUE);
       if(res < 0) {
+        internal_release(meta_path, &meta_fi);
         if(FALSE == lk_flag) {
           dedupe_fs_unlock(ab_path, fi.fh);
         }
+        internal_release(ab_path, &fi);
         return res;
       }
  
@@ -644,9 +642,11 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
  
       res = internal_unlink_hash_block(sha1);
       if(res < 0) {
+        internal_release(meta_path, &meta_fi);
         if(FALSE == lk_flag) {
           dedupe_fs_unlock(ab_path, fi.fh);
         }
+        internal_release(ab_path, &fi);
         return res;
       }
       meta_f_readcnt += OFF_HASH_LEN;
@@ -658,6 +658,7 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
       if(FALSE == lk_flag) {
         dedupe_fs_unlock(ab_path, fi.fh);
       }
+      internal_release(ab_path, &fi);
       return res;
     }
   }
@@ -671,26 +672,31 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
         if(FALSE == lk_flag) {
           dedupe_fs_unlock(ab_path, fi.fh);
         }
+        internal_release(ab_path, &fi);
         return res;
       }
     }
  
     dedupe_fs_filestore_path(bitmap_file_path, path);
     strcat(bitmap_file_path, BITMAP_FILE);
+    strcat(bitmap_file_path, DELETE_FILE);
  
     res = internal_unlink(bitmap_file_path);
     if(res < 0) {
       if(FALSE == lk_flag) {
         dedupe_fs_unlock(ab_path, fi.fh);
       }
+      internal_release(ab_path, &fi);
       return res;
     }
 
+    internal_release(ab_path, &fi);
     res = internal_unlink(ab_path);
     if(res < 0) {
       if(FALSE == lk_flag) {
         dedupe_fs_unlock(ab_path, fi.fh);
       }
+      internal_release(ab_path, &fi);
       return res;
     }
   }
@@ -698,6 +704,7 @@ int internal_unlink_file(const char *path, int full_del_flag, int lk_flag) {
   if(FALSE == lk_flag) {
     dedupe_fs_unlock(ab_path, fi.fh);
   }
+  internal_release(ab_path, &fi);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);
@@ -765,6 +772,10 @@ int internal_rmdir_dir(const char *path) {
       if((ab_del_path_end = strrstr(ab_del_path, DELETE_FILE)) != NULL) {
 
         *ab_del_path_end = '\0';
+
+        if((ab_del_path_end = strstr(ab_del_path, BITMAP_FILE)) != NULL) {
+          *ab_del_path_end = '\0';
+        }
         internal_unlink_file(ab_del_path, TRUE, FALSE);
 
       } else {

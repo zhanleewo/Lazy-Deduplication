@@ -120,10 +120,11 @@ void updates_handler(const char *path) {
   if(btmap == MAP_FAILED) {
     sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, path);
     perror(out_buf);
+    internal_release(ab_path, &bitmap_fi);
     return;
   }
 
-  internal_release(path, &bitmap_fi);
+  internal_release(ab_path, &bitmap_fi);
 
   ab_fi.flags = O_RDONLY;
   res = internal_open(ab_f_path, &ab_fi);
@@ -149,12 +150,14 @@ void updates_handler(const char *path) {
   res = internal_getattr(ab_f_path, &ab_f_stbuf);
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
     return;
   }
 
   res = internal_getattr(meta_path, &meta_stbuf);
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
     return;
   }
 
@@ -162,13 +165,16 @@ void updates_handler(const char *path) {
   res = internal_open(meta_path, &meta_fi);
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
     return;
   }
 
   memset(stat_buf, 0, STAT_LEN);
   res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
   if(res <= 0) {
+    internal_release(meta_path, &meta_fi);
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
     return;
   }
 
@@ -176,7 +182,9 @@ void updates_handler(const char *path) {
 
   res = internal_create(new_meta_path, 0600, &new_meta_fi);
   if(res < 0) {
+    internal_release(meta_path, &meta_fi);
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
     return;
   }
 
@@ -206,7 +214,10 @@ void updates_handler(const char *path) {
 
         res = internal_read(ab_f_path, data_buf+read, MINCHUNK, cur_block_off, &ab_fi, TRUE);
         if(res <= 0) {
+          internal_release(meta_path, &meta_fi);
+          internal_unlink(new_meta_path);
           dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+          internal_release(ab_f_path, &ab_fi);
           return;
         }
 
@@ -238,7 +249,10 @@ void updates_handler(const char *path) {
           memset(hash_line, 0, OFF_HASH_LEN);
           res = internal_read(meta_path, hash_line, OFF_HASH_LEN, hash_off, &meta_fi, FALSE);
           if(res <= 0) {
+            internal_release(meta_path, &meta_fi);
+            internal_unlink(new_meta_path);
             dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+            internal_release(ab_f_path, &ab_fi);
             return;
           }
 
@@ -260,19 +274,30 @@ void updates_handler(const char *path) {
             hash_fi.flags = O_RDONLY;
             res = internal_open(srchstr, &hash_fi);
             if(res < 0) {
+              internal_release(meta_path, &meta_fi);
+              internal_unlink(new_meta_path);
               dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+              internal_release(ab_f_path, &ab_fi);
               return;
             }
 
             r_cnt = internal_read(srchstr, data_buf+read, toread, cur_block_off-st_hash_off, &hash_fi, FALSE);
             if(r_cnt < 0) {
+              internal_release(meta_path, &meta_fi);
+              internal_release(srchstr, &hash_fi);
+              internal_unlink(new_meta_path);
               dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+              internal_release(ab_f_path, &ab_fi);
               return;
             }
          
             res = internal_release(srchstr, &hash_fi);
             if(res < 0) {
+              internal_release(meta_path, &meta_fi);
+              internal_release(srchstr, &hash_fi);
+              internal_unlink(new_meta_path);
               dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+              internal_release(ab_f_path, &ab_fi);
               return;
             }
      
@@ -357,6 +382,7 @@ void updates_handler(const char *path) {
   res = internal_rename(new_meta_path, meta_path);
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
+    internal_release(ab_f_path, &ab_fi);
     return;
   }
 
@@ -475,6 +501,9 @@ void process_initial_file_store(char *path) {
       if((new_f_path_end = strrstr(new_f_path, DELETE_FILE)) != NULL) {
         *new_f_path_end = '\0';
 
+        if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
+          *new_f_path_end = '\0';
+        }
         internal_unlink_file(new_f_path, TRUE, FALSE);
       }
       else if((new_f_path_end = strstr(new_f_path, BITMAP_FILE)) != NULL) {
@@ -521,6 +550,7 @@ void process_initial_file_store(char *path) {
 
           res = internal_write(meta_f_path, (char *)stat_buf, STAT_LEN, (off_t)0, &fi, FALSE);
           if(res < 0) {
+            internal_release(meta_f_path, &fi);
             continue;
           }
          
@@ -534,6 +564,7 @@ void process_initial_file_store(char *path) {
             if(res < 0) {
               sprintf(out_buf, "[%s] Rabin-Karp finger-printing failed on [%s]\n", __FUNCTION__, new_path);
               WR_2_STDOUT;
+              internal_release(meta_f_path, &fi);
               //TODO decide if return or abort
               continue;
             }
