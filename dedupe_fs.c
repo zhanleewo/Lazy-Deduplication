@@ -849,6 +849,10 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     }
   }
 
+  if(bitmap[NUM_BITMAP_WORDS] != (unsigned int)-1) {
+    stbuf.st_size = bitmap[NUM_BITMAP_WORDS];
+  }
+
   if((req_off+size) > stbuf.st_size) {
     toread = stbuf.st_size - req_off;
     if(toread < 0) {
@@ -1086,7 +1090,8 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   res = internal_getattr(meta_path, &meta_stbuf);
 
-  if(((fi->flags & O_CREAT) != O_CREAT) && res != -ENOENT) {
+
+  if(res != -ENOENT) {
 
     printf("pwrite call\n");
 
@@ -1108,6 +1113,11 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     }
 
     char2stbuf(stat_buf, &stbuf);
+
+    if(stbuf.st_size == 0) {
+      goto first_write;
+    }
+
     meta_f_readcnt = STAT_LEN;
     hash_off = STAT_LEN;
 
@@ -1309,6 +1319,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
 
   } else {
 
+first_write:
     printf("First time write\n");
 
     memcpy(write_buf+(offset%MINCHUNK), buf, size);
@@ -1431,6 +1442,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   res = internal_open(meta_path, &meta_fi);
   if(-ENOENT == res) {
     res = internal_truncate(ab_path, newsize);
+    // TODO reset the bitmap file chunk index
   } else {
     meta_present = TRUE;
   }
@@ -1472,7 +1484,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     char2stbuf(stat_buf, &stbuf);
 
     time(&tm);
-    //stbuf.st_size = newsize;
+    stbuf.st_size = newsize;
     stbuf.st_mtime = tm;
     stbuf.st_ctime = tm;
  

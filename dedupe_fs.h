@@ -28,7 +28,7 @@
 #define NUM_BITMAP_WORDS 2048
 #define BITMAP_LEN sizeof(int)*(NUM_BITMAP_WORDS+1)
 
-#define DEDUPE_PASS_TIMEOUT 20
+#define DEDUPE_PASS_TIMEOUT 30
 
 #define MAX_PATH_LEN 1024
 #define BUF_LEN 512
