@@ -733,7 +733,7 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
 
   dedupe_fs_filestore_path(ab_path, path);
 
-  printf("Open flags [%x]\n", fi->flags);
+  //printf("O_CREAT [%d] O_TRUNC [%d] O_EXCL [%d] O_APPEND [%d]\n", O_CREAT, O_TRUNC, O_EXCL, O_APPEND);
 
   if((fi->flags & O_APPEND) == O_APPEND) {
     fi->flags &= ~O_APPEND;
@@ -800,6 +800,7 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
   bitmap_fi.flags = O_RDWR;
   res = internal_open(bitmap_file_path, &bitmap_fi);
   if(res < 0) {
+    dedupe_fs_unlock(ab_path, fi->fh);
     return res;
   }
 
@@ -1400,8 +1401,11 @@ static int dedupe_fs_releasedir(const char *path, struct fuse_file_info *fi) {
 
 static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
-  int res = 0;
+  int i = 0, j = 0, res = 0;
   int meta_present = FALSE;
+  int block_num = -1;
+
+  unsigned int *bitmap = NULL;
 
   time_t tm;
 
@@ -1431,7 +1435,7 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
     return res;
   }
 
-  /* 
+  /*
    * File editors call truncate prior to updating the file. 
    * On truncate, set the bitmap entry's filesize to 0
    */
@@ -1452,7 +1456,11 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   res = internal_open(meta_path, &meta_fi);
   if(-ENOENT == res) {
     res = internal_truncate(ab_path, newsize);
-    // TODO reset the bitmap file chunk index
+    printf("done\n");
+    if(res < 0) {
+      dedupe_fs_unlock(ab_path, fi.fh);
+      return res;
+    }
   } else {
     meta_present = TRUE;
   }
@@ -1460,24 +1468,67 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
   dedupe_fs_filestore_path(bitmap_path, path);
   strcat(bitmap_path, BITMAP_FILE);
 
-  bitmap_fi.flags = O_WRONLY;
+  bitmap_fi.flags = O_RDWR;
   res = internal_open(bitmap_path, &bitmap_fi);
   if(res < 0) {
-    internal_release(meta_path, &meta_fi);
+    if(TRUE == meta_present) {
+      internal_release(meta_path, &meta_fi);
+    }
     dedupe_fs_unlock(ab_path, fi.fh);
     internal_release(ab_path, &fi);
     return res;
   }
 
-  res = internal_write(bitmap_path, &newsize, FILESIZE_LEN, (off_t)(sizeof(int)*NUM_BITMAP_WORDS), &bitmap_fi, FALSE);
-  if(res < 0) {
-    internal_release(meta_path, &meta_fi);
+  bitmap = (unsigned int *) mmap(NULL, BITMAP_LEN,
+      PROT_READ | PROT_WRITE, MAP_SHARED, bitmap_fi.fh, (off_t)0);
+
+  if(bitmap == MAP_FAILED) {
+
+    if(TRUE == meta_present) {
+      internal_release(meta_path, &meta_fi);
+    }
+    internal_release(bitmap_path, &bitmap_fi);
     dedupe_fs_unlock(ab_path, fi.fh);
     internal_release(ab_path, &fi);
+
+    sprintf(out_buf, "[%s] mmap failed on [%s]", __FUNCTION__, bitmap_path);
+    perror(out_buf);
+    res = -errno;
     return res;
   }
 
   internal_release(bitmap_path, &bitmap_fi);
+
+  block_num = (newsize-1) / MINCHUNK;
+
+  for(i = block_num/32 ; i < NUM_BITMAP_WORDS ; i++) {
+
+    if(i == (block_num/32)) {
+      j = block_num%32 + 1;
+    } else {
+      j = 0;
+    }
+
+    for( ; j < 32 ; j++) {
+      bitmap[i] &= ~(1<<j);
+    }
+  }
+
+  bitmap[NUM_BITMAP_WORDS] = (unsigned int)newsize;
+
+  munmap((void*)bitmap, BITMAP_LEN);
+
+#if 0
+  res = internal_write(bitmap_path, &newsize, FILESIZE_LEN, (off_t)(sizeof(int)*NUM_BITMAP_WORDS), &bitmap_fi, FALSE);
+  if(res < 0) {
+    if(TRUE == meta_present) {
+    internal_release(meta_path, &meta_fi);
+    }
+    dedupe_fs_unlock(ab_path, fi.fh);
+    internal_release(ab_path, &fi);
+    return res;
+  }
+#endif
 
   if(TRUE == meta_present) {
 
@@ -1485,7 +1536,9 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
 
     res = internal_read(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi);
     if(res < 0) {
-      internal_release(meta_path, &meta_fi);
+      if(TRUE == meta_present) {
+        internal_release(meta_path, &meta_fi);
+      }
       dedupe_fs_unlock(ab_path, fi.fh);
       internal_release(ab_path, &fi);
       return res;
@@ -1502,7 +1555,9 @@ static int dedupe_fs_truncate(const char *path, off_t newsize) {
  
     res = internal_write(meta_path, stat_buf, STAT_LEN, (off_t)0, &meta_fi, FALSE);
     if(res < 0) {
-      internal_release(meta_path, &meta_fi);
+      if(TRUE == meta_present) {
+        internal_release(meta_path, &meta_fi);
+      }
       dedupe_fs_unlock(ab_path, fi.fh);
       internal_release(ab_path, &fi);
       return res;
