@@ -199,11 +199,6 @@ void updates_handler(const char *path) {
   // TODO Read the file and recompute rabin-karp only for the
   // blocks which has been updated
 
-  // TODO Add support for truncate and file block deletion.
-  // Store the size of the updated file as well in the bitmap file
-  // Check this size before updation 
-  // (-1 for pwrite (or) unmodified), other size value imply the actual size
-
   while(i < NUM_BITMAP_WORDS) {
 
     cur_block_off = i * MINCHUNK;

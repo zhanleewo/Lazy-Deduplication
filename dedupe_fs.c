@@ -734,6 +734,11 @@ static int dedupe_fs_open(const char *path, struct fuse_file_info *fi) {
   dedupe_fs_filestore_path(ab_path, path);
 
   printf("Open flags [%x]\n", fi->flags);
+
+  if((fi->flags & O_APPEND) == O_APPEND) {
+    fi->flags &= ~O_APPEND;
+  }
+
   res = internal_open(ab_path, fi);
   if(res < 0) {
     return res;
@@ -1054,7 +1059,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
   WR_2_STDOUT;
 #endif
 
-  printf("[%s] path [%s] size [%ld] off [%lld] flags [%x] O_CREAT [%d]\n", __FUNCTION__, path, size, offset, fi->flags, O_CREAT);
+  printf("[%s] path [%s] size [%ld] off [%lld] flags [%x]\n", __FUNCTION__, path, size, offset, fi->flags);
 
   /*
      Modify the file stats here, esp the st_size
@@ -1274,7 +1279,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
           }
  
           r_cnt = internal_read(srchstr, write_buf+read, req_size_len, req_size_st-st_off, &hash_fi, FALSE);
-          if(r_cnt <= 0) {
+          if(r_cnt < 0) {
             internal_release(srchstr, &hash_fi);
             internal_release(meta_path, &meta_fi);
             munmap((void*)bitmap, BITMAP_LEN);
@@ -1304,7 +1309,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
       }
     }
 
-    res = internal_write(ab_path, write_buf, write_len, (offset/MINCHUNK)*MINCHUNK, fi, TRUE);
+    res = internal_write(ab_path, write_buf, write_len, (off_t)((offset/MINCHUNK)*MINCHUNK), fi, TRUE);
     if(res < 0) {
       internal_release(meta_path, &meta_fi);
       munmap((void*)bitmap, BITMAP_LEN);
