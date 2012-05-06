@@ -86,7 +86,7 @@ void updates_handler(const char *path) {
     WR_2_STDOUT;
     return;
   }
-  *new_f_path_end = NULL;
+  *new_f_path_end = '\0';
 
   meta_f_path_end = strstr(meta_path, BITMAP_FILE);
   if(NULL == meta_f_path_end) {
@@ -94,7 +94,7 @@ void updates_handler(const char *path) {
     WR_2_STDOUT;
     return;
   }
-  *meta_f_path_end = NULL;
+  *meta_f_path_end = '\0';
 
   strcpy(del_path, path);
 
@@ -104,7 +104,7 @@ void updates_handler(const char *path) {
     WR_2_STDOUT;
     return;
   }
-  *del_f_path_end = NULL;
+  *del_f_path_end = '\0';
 
   strcpy(new_meta_path, meta_path);
   strcat(new_meta_path, NEW_META);
@@ -129,6 +129,7 @@ void updates_handler(const char *path) {
   ab_fi.flags = O_RDONLY;
   res = internal_open(ab_f_path, &ab_fi);
   if(res < 0) {
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 
@@ -151,6 +152,7 @@ void updates_handler(const char *path) {
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 
@@ -158,6 +160,7 @@ void updates_handler(const char *path) {
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 
@@ -166,6 +169,7 @@ void updates_handler(const char *path) {
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 
@@ -175,6 +179,7 @@ void updates_handler(const char *path) {
     internal_release(meta_path, &meta_fi);
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 
@@ -185,6 +190,7 @@ void updates_handler(const char *path) {
     internal_release(meta_path, &meta_fi);
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 
@@ -218,6 +224,7 @@ void updates_handler(const char *path) {
           internal_unlink(new_meta_path);
           dedupe_fs_unlock(ab_f_path, ab_fi.fh);
           internal_release(ab_f_path, &ab_fi);
+          munmap((void*)btmap, BITMAP_LEN);
           return;
         }
 
@@ -225,7 +232,7 @@ void updates_handler(const char *path) {
         tot_file_read += res;
         cur_block_off += res;
 
-        btmap[1/32] &= ~(1<<(i%32));
+        btmap[i/32] &= ~(1<<(i%32));
 
       } else {
 
@@ -253,6 +260,7 @@ void updates_handler(const char *path) {
             internal_unlink(new_meta_path);
             dedupe_fs_unlock(ab_f_path, ab_fi.fh);
             internal_release(ab_f_path, &ab_fi);
+            munmap((void*)btmap, BITMAP_LEN);
             return;
           }
 
@@ -278,6 +286,7 @@ void updates_handler(const char *path) {
               internal_unlink(new_meta_path);
               dedupe_fs_unlock(ab_f_path, ab_fi.fh);
               internal_release(ab_f_path, &ab_fi);
+              munmap((void*)btmap, BITMAP_LEN);
               return;
             }
 
@@ -288,6 +297,7 @@ void updates_handler(const char *path) {
               internal_unlink(new_meta_path);
               dedupe_fs_unlock(ab_f_path, ab_fi.fh);
               internal_release(ab_f_path, &ab_fi);
+              munmap((void*)btmap, BITMAP_LEN);
               return;
             }
          
@@ -298,6 +308,7 @@ void updates_handler(const char *path) {
               internal_unlink(new_meta_path);
               dedupe_fs_unlock(ab_f_path, ab_fi.fh);
               internal_release(ab_f_path, &ab_fi);
+              munmap((void*)btmap, BITMAP_LEN);
               return;
             }
      
@@ -383,6 +394,7 @@ void updates_handler(const char *path) {
   if(res < 0) {
     dedupe_fs_unlock(ab_f_path, ab_fi.fh);
     internal_release(ab_f_path, &ab_fi);
+    munmap((void*)btmap, BITMAP_LEN);
     return;
   }
 

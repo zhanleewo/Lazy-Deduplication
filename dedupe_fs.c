@@ -853,6 +853,10 @@ static int dedupe_fs_read(const char *path, char *buf, size_t size, off_t offset
     stbuf.st_size = bitmap[NUM_BITMAP_WORDS];
   }
 
+  if(req_off > stbuf.st_size) {
+    return SUCCESS;
+  }
+
   if((req_off+size) > stbuf.st_size) {
     toread = stbuf.st_size - req_off;
     if(toread < 0) {
@@ -1115,6 +1119,7 @@ static int dedupe_fs_write(const char *path, char *buf, size_t size, off_t offse
     char2stbuf(stat_buf, &stbuf);
 
     if(stbuf.st_size == 0) {
+      internal_release(meta_path, &meta_fi);
       goto first_write;
     }
 
