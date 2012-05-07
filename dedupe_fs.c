@@ -303,6 +303,8 @@ static int dedupe_fs_rename(const char *path, const char *newpath) {
   char out_buf[BUF_LEN] = {0};
   char ab_path[MAX_PATH_LEN] = {0};
   char new_ab_path[MAX_PATH_LEN] = {0};
+  char bitmap_path[MAX_PATH_LEN] = {0};
+  char new_bitmap_path[MAX_PATH_LEN] = {0};
   char meta_path[MAX_PATH_LEN] = {0};
   char new_meta_path[MAX_PATH_LEN] = {0};
 
@@ -314,19 +316,18 @@ static int dedupe_fs_rename(const char *path, const char *newpath) {
   dedupe_fs_filestore_path(ab_path, path);
   dedupe_fs_filestore_path(new_ab_path, newpath);
 
-  res = rename(ab_path, new_ab_path);
-  if(FAILED == res) {
-    dedupe_fs_metadata_path(meta_path, path);
-    dedupe_fs_metadata_path(new_meta_path, path);
+  dedupe_fs_metadata_path(meta_path, path);
+  dedupe_fs_metadata_path(new_meta_path, newpath);
 
-    res = rename(meta_path, new_meta_path);
-    if(FAILED == res) {
-      sprintf(out_buf, "[%s] rename failed from [%s] to [%s]", __FUNCTION__, meta_path, new_meta_path);
-      perror(out_buf);
-      res = -errno;
-      return res;
-    }
-  }
+  strcpy(bitmap_path, ab_path);
+  strcat(bitmap_path, BITMAP_FILE);
+
+  strcpy(new_bitmap_path, new_ab_path);
+  strcat(new_bitmap_path, BITMAP_FILE);
+
+  res = internal_rename(meta_path, new_meta_path);
+  res = internal_rename(bitmap_path, new_bitmap_path);
+  res = internal_rename(ab_path, new_ab_path);
 
 #ifdef DEBUG
   sprintf(out_buf, "[%s] exit\n", __FUNCTION__);

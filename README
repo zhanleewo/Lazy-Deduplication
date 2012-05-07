@@ -20,8 +20,7 @@ $ make
 
 Project execution
 -----------------
-$ ./dedupe_fs /tmp/dedupe_fs
-$ ./rabinsha1 <fiename.txt>
+$ ./dedupe_fs /tmp/dedupe_fs -s -d
 
 Project contents in the zip file
 --------------------------------
@@ -29,8 +28,9 @@ Project contents in the zip file
 Makefile      – Creates /tmp/dedupe_file_store, /tmp/dedupe_metadata, /tmp/dedupe_hashes and /tmp/dedupe_fs. 
                 /tmp/dedupe_fs is the FUSE mount point exposed to the user as the dedupe-capable file system. 
 
-dedupe_fs.c   – Main part of the program containing the simple FUSE based file system. 
-                It also creates a new thread responsible for lazily working on the files stored in the initial file store. 
+dedupe_fs.c   – Main part of the program which handles file i/o system calls like 
+                open/close/read/write/truncate/getattr/chmod/chown/rename/access/unlink/opendir/releasedir/readdir/rmdir
+                It also creates a lazy thread performing a dedupe pass on the file system.
 lazy_worker.c – Contains the lazy worker thread whose functionality has already been explained above.
 debug_log.c   - Contains the implementation of printing the FUSE file information
 rabin-karp.c  – Contains the implementation specific to Rabin-Karp fingerprinting algorithm.
