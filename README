@@ -30,11 +30,11 @@ Makefile      – Creates /tmp/dedupe_file_store, /tmp/dedupe_metadata, /tmp/ded
 
 dedupe_fs.c   – Main part of the program which handles file i/o system calls like 
                 open/close/read/write/truncate/getattr/chmod/chown/rename/access/unlink/opendir/releasedir/readdir/rmdir
-                It also creates a lazy thread performing a dedupe pass on the file system.
-lazy_worker.c – Contains the lazy worker thread whose functionality has already been explained above.
+                It also creates a lazy thread performing a dedupe pass on the file system
+lazy_worker.c – Contains the lazy worker thread whose functionality has already been explained above
 debug_log.c   - Contains the implementation of printing the FUSE file information
-rabin-karp.c  – Contains the implementation specific to Rabin-Karp fingerprinting algorithm.
-sha1.c        – Contains the SHA1 implementation.
+rabin-karp.c  – Contains the implementation specific to Rabin-Karp fingerprinting algorithm
+sha1.c        – Contains the SHA1 implementation
 rabin-karp.h  - Header file which contains the function definitions required for Rabin-Karp fingerprinting algorithm
 sha1.h        - Header file which contains the function defintions required for sha1 implementation
 dedupe_fs.h   - Header file which contains the function definitions required for simple FUSE based file system
