@@ -25,8 +25,8 @@ $ ./dedupe_fs /tmp/dedupe_fs -s -d
 Project contents in the zip file
 --------------------------------
 
-Makefile      – Creates /tmp/dedupe_file_store, /tmp/dedupe_metadata, /tmp/dedupe_hashes and /tmp/dedupe_fs. 
-                /tmp/dedupe_fs is the FUSE mount point exposed to the user as the dedupe-capable file system. 
+Makefile      – Creates /tmp/dedupe_file_store, /tmp/dedupe_metadata, /tmp/dedupe_hashes and /tmp/dedupe_fs 
+                /tmp/dedupe_fs is the FUSE mount point exposed to the user as the dedupe-capable file system 
 
 dedupe_fs.c   – Main part of the program which handles file i/o system calls like 
                 open/close/read/write/truncate/getattr/chmod/chown/rename/access/unlink/opendir/releasedir/readdir/rmdir
